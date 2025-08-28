@@ -4,6 +4,8 @@ import { GameController } from '@/lib/GameController'
 import useInterval from '@/lib/hooks/useInterval'
 import { calculateSliderPath, getSliderBallPosition } from '@/lib/SliderUtils'
 import { parseOszFile } from '@/lib/osu/compressed'
+import useInputHandler from '@/lib/hooks/useInputHandler'
+import { preemptTime } from '@/lib/GameController'
 
 export const Route = createFileRoute('/test')({
   component: App,
@@ -15,6 +17,7 @@ function App() {
   const [backgroundImage, setBackgroundImage] =
     useState<HTMLImageElement | null>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
+  const inputHandler = useInputHandler()
 
   useEffect(() => {
     async function main() {
@@ -72,12 +75,12 @@ function App() {
   useInterval(async () => {
     if (!canvas.current || !image || !gc) return
 
-    let frameStartTime = performance.now()
-
     const context = canvas.current.getContext('2d')!
 
     const circles = await gc?.getVisibleCircles()
     const sliders = await gc?.getVisibleSliders()
+
+    const frameStartTime = performance.now()
 
     context.clearRect(0, 0, canvas.current.width, canvas.current.height)
 
@@ -119,12 +122,22 @@ function App() {
       parseFloat(gc.beatmap.difficulty.sliderMultiplier) || 1.4
 
     sliders?.forEach((slider) => {
+      const beatLength = gc.getBeatLengthAt(slider.time)
+      const pixelsPerBeat = sliderMultiplier * 100
+      const slideDuration = (slider.params.length / pixelsPerBeat) * beatLength
+      const endTime = slider.time + slideDuration * slider.params.slides
+      const fadeOutTime = 100
+      const timeSinceEnd = currentTimeMs - endTime
+      const alpha =
+        timeSinceEnd > 0 ? Math.max(0, 1 - timeSinceEnd / fadeOutTime) : 1
+
       const sliderPath = calculateSliderPath(slider)
 
       if (sliderPath.points.length > 1) {
         const trackWidth = circleSize * 0.9
 
         context.save()
+        context.globalAlpha = alpha
         context.beginPath()
         context.strokeStyle = '#333333'
         context.lineWidth = trackWidth + 8
@@ -161,12 +174,12 @@ function App() {
         context.stroke()
 
         context.restore()
+        context.globalAlpha = 1
       }
 
       const scaledX = slider.x * scaleX
       const scaledY = slider.y * scaleY
 
-      const preemptTime = 300
       const timeSinceAppear = currentTimeMs - (slider.time - preemptTime)
       const approachProgress = Math.max(
         0,
@@ -177,6 +190,7 @@ function App() {
         const approachCircleScale = 2 - 1 * approachProgress
         const approachRadius = (circleSize / 2) * approachCircleScale
 
+        context.globalAlpha = alpha
         context.beginPath()
         context.strokeStyle = '#FFFFFF'
         context.lineWidth = 3
@@ -188,8 +202,10 @@ function App() {
         context.lineWidth = 6
         context.arc(scaledX, scaledY, approachRadius, 0, Math.PI * 2)
         context.stroke()
+        context.globalAlpha = 1
       }
 
+      context.globalAlpha = alpha
       context.drawImage(
         image,
         scaledX - circleSize / 2,
@@ -197,12 +213,14 @@ function App() {
         circleSize,
         circleSize,
       )
+      context.globalAlpha = 1
 
       if (sliderPath.points.length > 0) {
         const endPoint = sliderPath.points[sliderPath.points.length - 1]
         const endX = endPoint.x * scaleX
         const endY = endPoint.y * scaleY
 
+        context.globalAlpha = alpha
         context.drawImage(
           image,
           endX - circleSize / 2,
@@ -210,9 +228,8 @@ function App() {
           circleSize,
           circleSize,
         )
+        context.globalAlpha = 1
       }
-
-      const beatLength = gc.getBeatLengthAt(slider.time)
 
       const ballPosition = getSliderBallPosition(
         slider,
@@ -239,6 +256,7 @@ function App() {
         gradient.addColorStop(0.7, '#DDDDDD')
         gradient.addColorStop(1, '#AAAAAA')
 
+        context.globalAlpha = alpha
         context.beginPath()
         context.fillStyle = gradient
         context.arc(ballX, ballY, ballSize, 0, Math.PI * 2)
@@ -249,12 +267,18 @@ function App() {
         context.lineWidth = 2
         context.arc(ballX, ballY, ballSize, 0, Math.PI * 2)
         context.stroke()
+        context.globalAlpha = 1
       }
     })
 
     circles?.forEach((circle) => {
       const scaledX = circle.x * scaleX
       const scaledY = circle.y * scaleY
+
+      const fadeOutTime = 100
+      const timeSinceHit = currentTimeMs - circle.time
+      const alpha =
+        timeSinceHit > 0 ? Math.max(0, 1 - timeSinceHit / fadeOutTime) : 1
 
       const preemptTime = 600
       const timeSinceAppear = currentTimeMs - (circle.time - preemptTime)
@@ -267,6 +291,7 @@ function App() {
         const approachCircleScale = 2 - 1 * approachProgress
         const approachRadius = (circleSize / 2) * approachCircleScale
 
+        context.globalAlpha = alpha
         context.beginPath()
         context.strokeStyle = '#FFFFFF'
         context.lineWidth = 3
@@ -278,6 +303,7 @@ function App() {
         context.lineWidth = 6
         context.arc(scaledX, scaledY, approachRadius, 0, Math.PI * 2)
         context.stroke()
+        context.globalAlpha = 1
       }
 
       context.save()
@@ -285,10 +311,11 @@ function App() {
       context.arc(scaledX, scaledY, (circleSize * 0.9) / 2, 0, Math.PI * 2)
       context.closePath()
       context.fillStyle = '#000'
-      context.globalAlpha = 1
+      context.globalAlpha = alpha
       context.fill()
       context.restore()
 
+      context.globalAlpha = alpha
       context.drawImage(
         image,
         scaledX - circleSize / 2,
@@ -296,18 +323,29 @@ function App() {
         circleSize,
         circleSize,
       )
+      context.globalAlpha = 1
     })
 
+    const frameEndTime = performance.now()
+    const frameDuration = frameEndTime - frameStartTime
+    console.log('Frame time:', frameDuration.toFixed(2), 'ms')
+    console.log('FPS:', (1000 / frameDuration).toFixed(2))
+
     context.restore()
-
-    const renderTimeFinal = performance.now() - frameStartTime
-
-    console.log(`Render time: ${renderTimeFinal.toFixed(2)} ms`)
-    console.log(`FPS: ${(1000 / renderTimeFinal).toFixed(2)}`)
   }, 0)
 
   return (
     <div className="h-screen w-screen bg-black">
+      <div
+        className="w-14 h-14 rounded-full z-20 absolute bg-white"
+        style={{
+          left: inputHandler.mouseX - 28 / 2 + 'px',
+          top: inputHandler.mouseY - 28 / 2 + 'px',
+          pointerEvents: 'none',
+          opacity: 0.5,
+        }}
+      ></div>
+
       <canvas
         ref={canvas}
         width={window.innerWidth}
