@@ -32,6 +32,13 @@ function RouteComponent() {
           >
             ▶ Play the demo!
           </Link>
+
+          <Link
+            to="/browser"
+            className="inline-flex items-center justify-center rounded-lg bg-zinc-500 px-6 py-3 font-semibold text-white shadow-md hover:translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+          >
+            ▶ Beatmap browser
+          </Link>
         </div>
 
         <div className="text-zinc-400">song used in demo is bad apple!</div>

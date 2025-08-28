@@ -8,12 +8,21 @@ import useInputHandler from '@/lib/hooks/useInputHandler'
 import { preemptTime } from '@/lib/GameController'
 import { InputHandler } from '@/lib/InputHandler'
 import { AudioController } from '@/lib/AudioController'
+import { Beatmap } from '@/lib/osu/parser'
 
-export const Route = createFileRoute('/test')({
+export const Route = createFileRoute('/game')({
   component: App,
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      oszUrl: search.oszUrl as string | undefined,
+      beatmapInfo: search.beatmapInfo as string | undefined,
+      difficulties: search.difficulties as string | undefined,
+    }
+  },
 })
 
 function App() {
+  const { oszUrl, beatmapInfo, difficulties } = Route.useSearch()
   const [gc, setGc] = useState<GameController>()
   const [image, setImage] = useState<HTMLImageElement | null>(null)
   const [backgroundImage, setBackgroundImage] =
@@ -22,21 +31,74 @@ function App() {
   const inputHandler = useInputHandler()
   const [score, setScore] = useState(0)
 
+  const [showDifficultySelect, setShowDifficultySelect] = useState(false)
+  const [availableDifficulties, setAvailableDifficulties] = useState<
+    Array<{
+      version: string
+      artist: string
+      title: string
+      creator: string
+    }>
+  >([])
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(
+    null,
+  )
+  const [allBeatmaps, setAllBeatmaps] = useState<Beatmap[]>([])
+  const [oszFiles, setOszFiles] = useState<any>(null)
+
   useEffect(() => {
     async function main() {
+      if (showDifficultySelect) {
+        return
+      }
+
+      if (selectedDifficulty && oszUrl) {
+        return
+      }
+
+      if (oszUrl && difficulties) {
+        try {
+          const parsedDifficulties = JSON.parse(difficulties)
+          setAvailableDifficulties(parsedDifficulties)
+
+          const { beatmaps, files } = await parseOszFile(oszUrl)
+          setAllBeatmaps(beatmaps)
+          setOszFiles(files)
+
+          if (beatmaps.length > 1) {
+            setShowDifficultySelect(true)
+            return
+          } else {
+            setSelectedDifficulty(beatmaps[0].metadata.version)
+            await loadBeatmap(beatmaps[0], files)
+          }
+        } catch (error) {
+          console.error('Failed to load custom beatmap:', error)
+          await loadDemoBeatmap()
+        }
+      } else {
+        await loadDemoBeatmap()
+      }
+    }
+
+    async function loadDemoBeatmap() {
       const { beatmaps, files } = await parseOszFile('/badapple.osz')
 
       const hardBeatmap =
-        beatmaps.find((b) => b.metadata.version === 'Normal') || beatmaps[0]
-
-      console.log(hardBeatmap)
+        beatmaps.find((b) => b.metadata.version === 'Hard') || beatmaps[0]
 
       if (!hardBeatmap) {
         console.error('No beatmap found')
         return
       }
 
-      const audioFilename = hardBeatmap.general.audioFilename
+      await loadBeatmap(hardBeatmap, files)
+    }
+
+    async function loadBeatmap(beatmap: Beatmap, files: any) {
+      console.log(beatmap)
+
+      const audioFilename = beatmap.general.audioFilename
       const audioFile = files[audioFilename]
 
       if (!audioFile) {
@@ -44,14 +106,14 @@ function App() {
         return
       }
 
-      const gc = new GameController(hardBeatmap, audioFile)
+      const gc = new GameController(beatmap, audioFile)
       setGc(gc)
 
       const img = new window.Image()
       img.src = '/skin/hitcircleoverlay.png'
       img.onload = () => setImage(img)
 
-      const backgroundEvent = hardBeatmap.events.find((event) =>
+      const backgroundEvent = beatmap.events.find((event) =>
         event.startsWith('0,0,'),
       )
 
@@ -73,9 +135,59 @@ function App() {
     }
 
     main()
-  }, [])
+  }, [oszUrl, difficulties]) // Removed selectedDifficulty from dependencies
 
-  // Preload approachCircleImg once
+  const handleDifficultySelect = async (difficultyVersion: string) => {
+    const selectedBeatmap = allBeatmaps.find(
+      (b) => b.metadata.version === difficultyVersion,
+    )
+    if (selectedBeatmap && oszFiles) {
+      setSelectedDifficulty(difficultyVersion)
+      setShowDifficultySelect(false)
+
+      // Reset current game state
+      setGc(undefined)
+      setImage(null)
+      setBackgroundImage(null)
+      setScore(0)
+
+      const audioFilename = selectedBeatmap.general.audioFilename
+      const audioFile = oszFiles[audioFilename]
+
+      if (!audioFile) {
+        console.error('Audio file not found:', audioFilename)
+        return
+      }
+
+      const gc = new GameController(selectedBeatmap, audioFile)
+      setGc(gc)
+
+      const img = new window.Image()
+      img.src = '/skin/hitcircleoverlay.png'
+      img.onload = () => setImage(img)
+
+      const backgroundEvent = selectedBeatmap.events.find((event) =>
+        event.startsWith('0,0,'),
+      )
+
+      if (backgroundEvent) {
+        const parts = backgroundEvent.split(',')
+        const backgroundFilename = parts[2].replace(/"/g, '')
+        const backgroundFile = oszFiles[backgroundFilename]
+
+        if (backgroundFile) {
+          const blob = new Blob([backgroundFile.buffer as ArrayBuffer])
+          const backgroundUrl = URL.createObjectURL(blob)
+          const bgImg = new window.Image()
+          bgImg.style.opacity = '0.25'
+
+          bgImg.src = backgroundUrl
+          bgImg.onload = () => setBackgroundImage(bgImg)
+        }
+      }
+    }
+  }
+
   const approachCircleImg = useRef<HTMLImageElement | null>(null)
   useEffect(() => {
     const img = new window.Image()
@@ -509,6 +621,37 @@ function App() {
 
     context.restore()
   }, 0)
+
+  if (showDifficultySelect) {
+    return (
+      <div className="h-screen w-screen bg-black flex items-center justify-center">
+        <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-8 max-w-lg w-full mx-4">
+          <h2 className="text-white text-2xl font-semibold mb-6 text-center">
+            Select Difficulty
+          </h2>
+          <div className="space-y-3">
+            {availableDifficulties.map((diff) => (
+              <button
+                key={diff.version}
+                onClick={() => handleDifficultySelect(diff.version)}
+                className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 hover:border-yellow-400/60 rounded-xl p-4 text-left transition group"
+              >
+                <div className="text-yellow-400 font-semibold text-lg group-hover:text-yellow-300">
+                  {diff.version}
+                </div>
+                <div className="text-zinc-400 text-sm mt-1">
+                  {diff.artist} - {diff.title}
+                </div>
+                <div className="text-zinc-500 text-xs mt-1">
+                  by {diff.creator}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="h-screen w-screen bg-black cursor-none">
