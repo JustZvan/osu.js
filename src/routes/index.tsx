@@ -27,7 +27,8 @@ function RouteComponent() {
 
         <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
           <Link
-            to="/test"
+            to="/game"
+            search={{} as any} // hack
             className="inline-flex items-center justify-center rounded-lg bg-yellow-400 px-6 py-3 font-semibold text-black shadow-lg shadow-yellow-400/20 ring-1 ring-yellow-300 transition hover:translate-y-0.5 hover:bg-yellow-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-200"
           >
             ▶ Play the demo!
