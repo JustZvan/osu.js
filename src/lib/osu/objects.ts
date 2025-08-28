@@ -1,3 +1,5 @@
+import { AudioController } from '../AudioController'
+
 export function ParseRawHitobject(line: string) {
   const parts = line.split(',')
   const x = parseInt(parts[0])
@@ -66,6 +68,7 @@ export class HitObject {
   objType: string
   params: any
   hitSample: string
+  shouldRender: boolean = true
 
   constructor({ x, y, time, type, hitSound, objType, params, hitSample }: any) {
     this.x = x
@@ -76,5 +79,12 @@ export class HitObject {
     this.objType = objType
     this.params = params
     this.hitSample = hitSample
+  }
+
+  async hit() {
+    // function to handle click
+    if (this.objType == 'circle') {
+      this.shouldRender = false
+    }
   }
 }

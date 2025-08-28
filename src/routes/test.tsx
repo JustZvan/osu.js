@@ -6,6 +6,7 @@ import { calculateSliderPath, getSliderBallPosition } from '@/lib/SliderUtils'
 import { parseOszFile } from '@/lib/osu/compressed'
 import useInputHandler from '@/lib/hooks/useInputHandler'
 import { preemptTime } from '@/lib/GameController'
+import { InputHandler } from '@/lib/InputHandler'
 
 export const Route = createFileRoute('/test')({
   component: App,
@@ -21,10 +22,10 @@ function App() {
 
   useEffect(() => {
     async function main() {
-      const { beatmaps, files } = await parseOszFile('/badapple.osz')
+      const { beatmaps, files } = await parseOszFile('/konton.osz')
 
       const hardBeatmap =
-        beatmaps.find((b) => b.metadata.version === 'Insane') || beatmaps[0]
+        beatmaps.find((b) => b.metadata.version === 'Hard') || beatmaps[0]
 
       console.log(hardBeatmap)
 
@@ -122,6 +123,10 @@ function App() {
       parseFloat(gc.beatmap.difficulty.sliderMultiplier) || 1.4
 
     sliders?.forEach((slider) => {
+      if (!slider.shouldRender) {
+        return
+      }
+
       const beatLength = gc.getBeatLengthAt(slider.time)
       const pixelsPerBeat = sliderMultiplier * 100
       const slideDuration = (slider.params.length / pixelsPerBeat) * beatLength
@@ -272,6 +277,34 @@ function App() {
     })
 
     circles?.forEach((circle) => {
+      if (!circle.shouldRender) {
+        return
+      }
+
+      // check if mouse is touching a circle or slider and if it is dont render and set should render to false
+      const [mouseX, mouseY] = [inputHandler.mouseX, inputHandler.mouseY]
+
+      // map mouse to osu!pixels (512x384)
+      const osuPixelsX = Math.floor(mouseX / (window.innerWidth / 512))
+      const osuPixelsY = Math.floor(mouseY / (window.innerHeight / 384))
+
+      if (InputHandler._active?.shouldHit) {
+        InputHandler._active.shouldHit = false
+
+        console.log('click!')
+
+        const dx = osuPixelsX - circle.x
+        const dy = osuPixelsY - circle.y
+        const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
+        const circleRadius = 54.4 - 4.48 * cs
+
+        if (dx * dx + dy * dy <= circleRadius * circleRadius) {
+          console.log('ooo click')
+          circle.shouldRender = false
+          return
+        }
+      }
+
       const scaledX = circle.x * scaleX
       const scaledY = circle.y * scaleY
 
@@ -287,22 +320,36 @@ function App() {
         Math.min(1, timeSinceAppear / preemptTime),
       )
 
-      if (currentTimeMs < circle.time) {
+      if (currentTimeMs < circle.time && image) {
         const approachCircleScale = 2 - 1 * approachProgress
         const approachRadius = (circleSize / 2) * approachCircleScale
 
-        context.globalAlpha = alpha
-        context.beginPath()
-        context.strokeStyle = '#FFFFFF'
-        context.lineWidth = 3
-        context.arc(scaledX, scaledY, approachRadius, 0, Math.PI * 2)
-        context.stroke()
+        const approachCircleImg = new window.Image()
+        approachCircleImg.src = '/skin/approachcircle.png'
 
-        context.beginPath()
-        context.strokeStyle = 'rgba(255, 255, 255, 0.3)'
-        context.lineWidth = 6
-        context.arc(scaledX, scaledY, approachRadius, 0, Math.PI * 2)
-        context.stroke()
+        context.globalAlpha = alpha
+        if (approachCircleImg.complete) {
+          context.drawImage(
+            approachCircleImg,
+            scaledX - approachRadius,
+            scaledY - approachRadius,
+            approachRadius * 2,
+            approachRadius * 2,
+          )
+        } else {
+          // fallback to stroke if image not loaded yet
+          context.beginPath()
+          context.strokeStyle = '#FFFFFF'
+          context.lineWidth = 3
+          context.arc(scaledX, scaledY, approachRadius, 0, Math.PI * 2)
+          context.stroke()
+
+          context.beginPath()
+          context.strokeStyle = 'rgba(255, 255, 255, 0.3)'
+          context.lineWidth = 6
+          context.arc(scaledX, scaledY, approachRadius, 0, Math.PI * 2)
+          context.stroke()
+        }
         context.globalAlpha = 1
       }
 
@@ -328,8 +375,6 @@ function App() {
 
     const frameEndTime = performance.now()
     const frameDuration = frameEndTime - frameStartTime
-    console.log('Frame time:', frameDuration.toFixed(2), 'ms')
-    console.log('FPS:', (1000 / frameDuration).toFixed(2))
 
     context.restore()
   }, 0)

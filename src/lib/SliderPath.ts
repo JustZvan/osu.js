@@ -68,9 +68,9 @@ export function calculateSliderPath(slider: HitObject): SliderPath {
   }
 
   if (curveType === 'B' || curveType === 'P') {
-    console.log(
-      `Generated ${pathPoints.length} path points for ${curveType} slider`,
-    )
+    // console.log(
+    //   `Generated ${pathPoints.length} path points for ${curveType} slider`,
+    // )
   }
 
   return {
