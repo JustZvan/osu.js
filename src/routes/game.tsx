@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { GameController } from '@/lib/GameController'
 import useInterval from '@/lib/hooks/useInterval'
 import { calculateSliderPath, getSliderBallPosition } from '@/lib/SliderUtils'
@@ -135,7 +135,7 @@ function App() {
     }
 
     main()
-  }, [oszUrl, difficulties]) // Removed selectedDifficulty from dependencies
+  }, [oszUrl, difficulties])
 
   const handleDifficultySelect = async (difficultyVersion: string) => {
     const selectedBeatmap = allBeatmaps.find(
@@ -145,7 +145,6 @@ function App() {
       setSelectedDifficulty(difficultyVersion)
       setShowDifficultySelect(false)
 
-      // Reset current game state
       setGc(undefined)
       setImage(null)
       setBackgroundImage(null)
@@ -197,7 +196,7 @@ function App() {
     }
   }, [])
 
-  useInterval(async () => {
+  const render = useCallback(async () => {
     if (!canvas.current || !image || !gc) return
 
     const context = canvas.current.getContext('2d')!
@@ -264,10 +263,6 @@ function App() {
 
       const sliderPath = calculateSliderPath(slider)
 
-      const [mouseX, mouseY] = [inputHandler.mouseX, inputHandler.mouseY]
-      const osuPixelsX = Math.floor(mouseX / (window.innerWidth / 512))
-      const osuPixelsY = Math.floor(mouseY / (window.innerHeight / 384))
-
       const ballPosition = getSliderBallPosition(
         slider,
         currentTimeMs,
@@ -277,47 +272,9 @@ function App() {
       )
 
       if (
-        InputHandler._active?.shouldHit &&
-        ballPosition &&
-        currentTimeMs >= slider.time &&
-        currentTimeMs <= endTime
-      ) {
-        InputHandler._active.shouldHit = false
-        const dx = osuPixelsX - ballPosition.x
-        const dy = osuPixelsY - ballPosition.y
-        const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
-        const circleRadius = 54.4 - 4.48 * cs
-
-        if (slider.shouldPlayHitSound) {
-          AudioController._active?.playHitSound()
-
-          slider.shouldPlayHitSound = false
-        }
-
-        if (dx * dx + dy * dy <= circleRadius * circleRadius) {
-          sliderAny.isActive = true
-        }
-      }
-
-      if (sliderAny.isActive && ballPosition) {
-        const dx = osuPixelsX - ballPosition.x
-        const dy = osuPixelsY - ballPosition.y
-        const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
-        const circleRadius = 54.4 - 4.48 * cs
-        if (dx * dx + dy * dy <= circleRadius * circleRadius) {
-          sliderAny.userProgress = currentTimeMs - slider.time
-        } else {
-          sliderAny.isActive = false
-        }
-      }
-
-      if (
         currentTimeMs > endTime ||
         sliderAny.userProgress >= slideDuration * slider.params.slides
       ) {
-        if (slider.shouldRender) {
-          setScore((prev) => prev + 300)
-        }
         slider.shouldRender = false
         return
       }
@@ -527,34 +484,6 @@ function App() {
         return
       }
 
-      const [mouseX, mouseY] = [inputHandler.mouseX, inputHandler.mouseY]
-
-      const osuPixelsX = Math.floor(mouseX / (window.innerWidth / 512))
-      const osuPixelsY = Math.floor(mouseY / (window.innerHeight / 384))
-
-      if (InputHandler._active?.shouldHit) {
-        InputHandler._active.shouldHit = false
-
-        console.log('click!')
-
-        const dx = osuPixelsX - circle.x
-        const dy = osuPixelsY - circle.y
-        const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
-        const circleRadius = 54.4 - 4.48 * cs
-
-        if (dx * dx + dy * dy <= circleRadius * circleRadius) {
-          console.log('ooo click')
-
-          AudioController._active?.playHitSound()
-
-          const newScore = score + 300
-          setScore(newScore)
-
-          circle.shouldRender = false
-          return
-        }
-      }
-
       const scaledX = circle.x * scaleX
       const scaledY = circle.y * scaleY
 
@@ -620,7 +549,145 @@ function App() {
     })
 
     context.restore()
+  }, [canvas, image, gc, backgroundImage, inputHandler, approachCircleImg])
+
+  useInterval(async () => {
+    if (!gc) return
+
+    const circles = await gc?.getVisibleCircles()
+    const sliders = await gc?.getVisibleSliders()
+
+    const currentTime = await gc.audioController.getTime()
+    const currentTimeMs = currentTime * 1000
+    const sliderMultiplier =
+      parseFloat(gc.beatmap.difficulty.sliderMultiplier) || 1.4
+
+    sliders?.forEach((slider) => {
+      if (!slider.shouldRender) {
+        return
+      }
+
+      const sliderAny = slider as any
+      if (sliderAny.userProgress === undefined) sliderAny.userProgress = 0
+      if (sliderAny.isActive === undefined) sliderAny.isActive = false
+
+      const beatLength = gc.getBeatLengthAt(slider.time)
+      const pixelsPerBeat = sliderMultiplier * 100
+      const slideDuration = (slider.params.length / pixelsPerBeat) * beatLength
+      const endTime = slider.time + slideDuration * slider.params.slides
+
+      const sliderPath = calculateSliderPath(slider)
+
+      const [mouseX, mouseY] = [inputHandler.mouseX, inputHandler.mouseY]
+      const osuPixelsX = Math.floor(mouseX / (window.innerWidth / 512))
+      const osuPixelsY = Math.floor(mouseY / (window.innerHeight / 384))
+
+      const ballPosition = getSliderBallPosition(
+        slider,
+        currentTimeMs,
+        sliderPath,
+        sliderMultiplier,
+        beatLength,
+      )
+
+      if (
+        InputHandler._active?.shouldHit &&
+        ballPosition &&
+        currentTimeMs >= slider.time &&
+        currentTimeMs <= endTime
+      ) {
+        InputHandler._active.shouldHit = false
+        const dx = osuPixelsX - ballPosition.x
+        const dy = osuPixelsY - ballPosition.y
+        const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
+        const circleRadius = 54.4 - 4.48 * cs
+
+        if (slider.shouldPlayHitSound) {
+          AudioController._active?.playHitSound()
+
+          slider.shouldPlayHitSound = false
+        }
+
+        if (dx * dx + dy * dy <= circleRadius * circleRadius) {
+          sliderAny.isActive = true
+        }
+      }
+
+      if (sliderAny.isActive && ballPosition) {
+        const dx = osuPixelsX - ballPosition.x
+        const dy = osuPixelsY - ballPosition.y
+        const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
+        const circleRadius = 54.4 - 4.48 * cs
+        if (dx * dx + dy * dy <= circleRadius * circleRadius) {
+          sliderAny.userProgress = currentTimeMs - slider.time
+        } else {
+          sliderAny.isActive = false
+        }
+      }
+
+      if (
+        currentTimeMs > endTime ||
+        sliderAny.userProgress >= slideDuration * slider.params.slides
+      ) {
+        if (slider.shouldRender) {
+          setScore((prev) => prev + 300)
+        }
+        slider.shouldRender = false
+        return
+      }
+    })
+
+    circles?.forEach((circle) => {
+      if (!circle.shouldRender) {
+        return
+      }
+
+      const [mouseX, mouseY] = [inputHandler.mouseX, inputHandler.mouseY]
+
+      const osuPixelsX = Math.floor(mouseX / (window.innerWidth / 512))
+      const osuPixelsY = Math.floor(mouseY / (window.innerHeight / 384))
+
+      if (InputHandler._active?.shouldHit) {
+        InputHandler._active.shouldHit = false
+
+        console.log('click!')
+
+        const dx = osuPixelsX - circle.x
+        const dy = osuPixelsY - circle.y
+        const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
+        const circleRadius = 54.4 - 4.48 * cs
+
+        if (dx * dx + dy * dy <= circleRadius * circleRadius) {
+          console.log('ooo click')
+
+          AudioController._active?.playHitSound()
+
+          const newScore = score + 300
+          setScore(newScore)
+
+          circle.shouldRender = false
+          return
+        }
+      }
+    })
   }, 0)
+
+  useEffect(() => {
+    let animationId: number
+
+    const loop = () => {
+      render()
+      animationId = requestAnimationFrame(loop)
+    }
+
+    animationId = requestAnimationFrame(loop)
+
+    return () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId)
+      }
+    }
+  }, [render])
 
   if (showDifficultySelect) {
     return (
