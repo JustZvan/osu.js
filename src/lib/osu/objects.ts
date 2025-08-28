@@ -1,5 +1,3 @@
-import { AudioController } from '../AudioController'
-
 export function ParseRawHitobject(line: string) {
   const parts = line.split(',')
   const x = parseInt(parts[0])
