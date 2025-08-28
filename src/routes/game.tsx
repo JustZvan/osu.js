@@ -22,7 +22,7 @@ export const Route = createFileRoute('/game')({
 })
 
 function App() {
-  const { oszUrl, beatmapInfo, difficulties } = Route.useSearch()
+  const { oszUrl, difficulties } = Route.useSearch()
   const [gc, setGc] = useState<GameController>()
   const [image, setImage] = useState<HTMLImageElement | null>(null)
   const [backgroundImage, setBackgroundImage] =
