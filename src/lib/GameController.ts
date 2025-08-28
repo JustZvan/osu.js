@@ -2,6 +2,7 @@ import { Beatmap } from './osu/parser'
 import { AudioController } from './AudioController'
 import { HitObject } from './osu/objects'
 
+export const preemptTime = 600
 export class GameController {
   static _active: GameController | null = null
   beatmap: Beatmap
@@ -17,20 +18,17 @@ export class GameController {
     this.beatmap = beatmap
     this.audio = audio
 
-    this.audioController = new AudioController(this.audio)
+    const audioLeadIn = parseInt(this.beatmap.general.audioLeadIn) || 0
+    this.audioController = new AudioController(this.audio, audioLeadIn)
   }
 
   /**
    * Returns the circles that should be visible on screen at the current audio time.
    * Ignores sliders and spinners, only returns circle hit objects.
-   * @param preemptTime How early before hit time to show circles (default: 600ms)
    * @param fadeOutTime How long after hit time to keep showing circles (default: 100ms)
    * @returns Array of circle hit objects that should be visible
    */
-  async getVisibleCircles(
-    preemptTime: number = 300,
-    fadeOutTime: number = 100,
-  ): Promise<HitObject[]> {
+  async getVisibleCircles(fadeOutTime: number = 100): Promise<HitObject[]> {
     const currentTime = await this.audioController.getTime()
     const currentTimeMs = currentTime * 1000
 
@@ -39,22 +37,20 @@ export class GameController {
 
       const hitTime = hitObject.time
       const showTime = hitTime - preemptTime
-      const hideTime = hitTime + fadeOutTime
+      const timeSinceHit = currentTimeMs - hitTime
+      const alpha =
+        timeSinceHit > 0 ? Math.max(0, 1 - timeSinceHit / fadeOutTime) : 1
 
-      return currentTimeMs >= showTime && currentTimeMs <= hideTime
+      return currentTimeMs >= showTime && alpha > 0
     })
   }
 
   /**
    * Returns the sliders that should be visible on screen at the current audio time.
-   * @param preemptTime How early before hit time to show sliders (default: 600ms)
    * @param fadeOutTime How long after end time to keep showing sliders (default: 100ms)
    * @returns Array of slider hit objects that should be visible
    */
-  async getVisibleSliders(
-    preemptTime: number = 300,
-    fadeOutTime: number = 100,
-  ): Promise<HitObject[]> {
+  async getVisibleSliders(fadeOutTime: number = 100): Promise<HitObject[]> {
     const currentTime = await this.audioController.getTime()
     const currentTimeMs = currentTime * 1000
 
@@ -71,9 +67,11 @@ export class GameController {
       const sliderLength = hitObject.params.length
       const slideDuration = (sliderLength / pixelsPerBeat) * beatLength
       const endTime = hitTime + slideDuration * hitObject.params.slides
-      const hideTime = endTime + fadeOutTime
+      const timeSinceEnd = currentTimeMs - endTime
+      const alpha =
+        timeSinceEnd > 0 ? Math.max(0, 1 - timeSinceEnd / fadeOutTime) : 1
 
-      return currentTimeMs >= showTime && currentTimeMs <= hideTime
+      return currentTimeMs >= showTime && alpha > 0
     })
   }
 
