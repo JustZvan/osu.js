@@ -18,14 +18,14 @@ export function calculateSliderPath(slider: HitObject): SliderPath {
   const { curveType, curvePoints, length } = slider.params
   const startPoint: Point = { x: slider.x, y: slider.y }
 
-  if (curveType === 'B' || curveType === 'P') {
-    console.log(`Processing ${curveType} slider:`, {
-      curveType,
-      curvePoints,
-      length,
-      startPoint,
-    })
-  }
+  // if (curveType === 'B' || curveType === 'P') {
+  //   console.log(`Processing ${curveType} slider:`, {
+  //     curveType,
+  //     curvePoints,
+  //     length,
+  //     startPoint,
+  //   })
+  // }
 
   const controlPoints: Point[] = [startPoint]
 

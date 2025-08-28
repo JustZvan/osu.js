@@ -7,6 +7,7 @@ import { parseOszFile } from '@/lib/osu/compressed'
 import useInputHandler from '@/lib/hooks/useInputHandler'
 import { preemptTime } from '@/lib/GameController'
 import { InputHandler } from '@/lib/InputHandler'
+import { AudioController } from '@/lib/AudioController'
 
 export const Route = createFileRoute('/test')({
   component: App,
@@ -19,13 +20,14 @@ function App() {
     useState<HTMLImageElement | null>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const inputHandler = useInputHandler()
+  const [score, setScore] = useState(0)
 
   useEffect(() => {
     async function main() {
-      const { beatmaps, files } = await parseOszFile('/konton.osz')
+      const { beatmaps, files } = await parseOszFile('/badapple.osz')
 
       const hardBeatmap =
-        beatmaps.find((b) => b.metadata.version === 'Hard') || beatmaps[0]
+        beatmaps.find((b) => b.metadata.version === 'Normal') || beatmaps[0]
 
       console.log(hardBeatmap)
 
@@ -73,6 +75,16 @@ function App() {
     main()
   }, [])
 
+  // Preload approachCircleImg once
+  const approachCircleImg = useRef<HTMLImageElement | null>(null)
+  useEffect(() => {
+    const img = new window.Image()
+    img.src = '/skin/approachcircle.png'
+    img.onload = () => {
+      approachCircleImg.current = img
+    }
+  }, [])
+
   useInterval(async () => {
     if (!canvas.current || !image || !gc) return
 
@@ -80,8 +92,6 @@ function App() {
 
     const circles = await gc?.getVisibleCircles()
     const sliders = await gc?.getVisibleSliders()
-
-    const frameStartTime = performance.now()
 
     context.clearRect(0, 0, canvas.current.width, canvas.current.height)
 
@@ -127,6 +137,10 @@ function App() {
         return
       }
 
+      const sliderAny = slider as any
+      if (sliderAny.userProgress === undefined) sliderAny.userProgress = 0
+      if (sliderAny.isActive === undefined) sliderAny.isActive = false
+
       const beatLength = gc.getBeatLengthAt(slider.time)
       const pixelsPerBeat = sliderMultiplier * 100
       const slideDuration = (slider.params.length / pixelsPerBeat) * beatLength
@@ -138,16 +152,83 @@ function App() {
 
       const sliderPath = calculateSliderPath(slider)
 
+      const [mouseX, mouseY] = [inputHandler.mouseX, inputHandler.mouseY]
+      const osuPixelsX = Math.floor(mouseX / (window.innerWidth / 512))
+      const osuPixelsY = Math.floor(mouseY / (window.innerHeight / 384))
+
+      const ballPosition = getSliderBallPosition(
+        slider,
+        currentTimeMs,
+        sliderPath,
+        sliderMultiplier,
+        beatLength,
+      )
+
+      if (
+        InputHandler._active?.shouldHit &&
+        ballPosition &&
+        currentTimeMs >= slider.time &&
+        currentTimeMs <= endTime
+      ) {
+        InputHandler._active.shouldHit = false
+        const dx = osuPixelsX - ballPosition.x
+        const dy = osuPixelsY - ballPosition.y
+        const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
+        const circleRadius = 54.4 - 4.48 * cs
+
+        AudioController._active?.playHitSound()
+
+        if (dx * dx + dy * dy <= circleRadius * circleRadius) {
+          sliderAny.isActive = true
+        }
+      }
+
+      if (sliderAny.isActive && ballPosition) {
+        const dx = osuPixelsX - ballPosition.x
+        const dy = osuPixelsY - ballPosition.y
+        const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
+        const circleRadius = 54.4 - 4.48 * cs
+        if (dx * dx + dy * dy <= circleRadius * circleRadius) {
+          sliderAny.userProgress = currentTimeMs - slider.time
+        } else {
+          sliderAny.isActive = false
+        }
+      }
+
+      if (
+        currentTimeMs > endTime ||
+        sliderAny.userProgress >= slideDuration * slider.params.slides
+      ) {
+        if (slider.shouldRender) {
+          setScore((prev) => prev + 300)
+        }
+        slider.shouldRender = false
+        return
+      }
+
       if (sliderPath.points.length > 1) {
         const trackWidth = circleSize * 0.9
 
+        const sliderProgress = Math.max(
+          0,
+          (currentTimeMs - slider.time) /
+            (slideDuration * slider.params.slides),
+        )
+        const totalPathLength = sliderPath.points.length - 1
+
+        const currentRepeat = Math.floor(sliderProgress * slider.params.slides)
+        const repeatProgress = (sliderProgress * slider.params.slides) % 1
+        const isReverse = currentRepeat % 2 === 1
+
+        let pathProgress = isReverse ? 1 - repeatProgress : repeatProgress
+        pathProgress = Math.max(0, Math.min(1, pathProgress))
+
+        const completedPoints = Math.floor(pathProgress * totalPathLength)
+        const segmentProgress = (pathProgress * totalPathLength) % 1
+
         context.save()
         context.globalAlpha = alpha
-        context.beginPath()
-        context.strokeStyle = '#333333'
-        context.lineWidth = trackWidth + 8
-        context.lineCap = 'round'
-        context.lineJoin = 'round'
+
         context.beginPath()
         context.strokeStyle = '#333333'
         context.lineWidth = trackWidth + 8
@@ -170,10 +251,74 @@ function App() {
         context.lineCap = 'round'
         context.lineJoin = 'round'
 
-        context.moveTo(firstPoint.x * scaleX, firstPoint.y * scaleY)
-        for (let i = 1; i < sliderPath.points.length; i++) {
-          const point = sliderPath.points[i]
-          context.lineTo(point.x * scaleX, point.y * scaleY)
+        if (currentTimeMs < slider.time) {
+          context.moveTo(firstPoint.x * scaleX, firstPoint.y * scaleY)
+          for (let i = 1; i < sliderPath.points.length; i++) {
+            const point = sliderPath.points[i]
+            context.lineTo(point.x * scaleX, point.y * scaleY)
+          }
+        } else {
+          if (isReverse) {
+            if (completedPoints > 0 || segmentProgress > 0) {
+              context.moveTo(firstPoint.x * scaleX, firstPoint.y * scaleY)
+
+              for (
+                let i = 1;
+                i <= completedPoints && i < sliderPath.points.length;
+                i++
+              ) {
+                const point = sliderPath.points[i]
+                context.lineTo(point.x * scaleX, point.y * scaleY)
+              }
+
+              if (
+                segmentProgress > 0 &&
+                completedPoints < sliderPath.points.length - 1
+              ) {
+                const currentPoint = sliderPath.points[completedPoints]
+                const nextPoint = sliderPath.points[completedPoints + 1]
+                const interpX =
+                  currentPoint.x +
+                  (nextPoint.x - currentPoint.x) * segmentProgress
+                const interpY =
+                  currentPoint.y +
+                  (nextPoint.y - currentPoint.y) * segmentProgress
+                context.lineTo(interpX * scaleX, interpY * scaleY)
+              }
+            }
+          } else {
+            if (completedPoints < sliderPath.points.length - 1) {
+              let startPoint
+              if (
+                segmentProgress > 0 &&
+                completedPoints < sliderPath.points.length - 1
+              ) {
+                const currentPoint = sliderPath.points[completedPoints]
+                const nextPoint = sliderPath.points[completedPoints + 1]
+                startPoint = {
+                  x:
+                    currentPoint.x +
+                    (nextPoint.x - currentPoint.x) * segmentProgress,
+                  y:
+                    currentPoint.y +
+                    (nextPoint.y - currentPoint.y) * segmentProgress,
+                }
+              } else {
+                startPoint = sliderPath.points[completedPoints]
+              }
+
+              context.moveTo(startPoint.x * scaleX, startPoint.y * scaleY)
+
+              for (
+                let i = completedPoints + 1;
+                i < sliderPath.points.length;
+                i++
+              ) {
+                const point = sliderPath.points[i]
+                context.lineTo(point.x * scaleX, point.y * scaleY)
+              }
+            }
+          }
         }
 
         context.stroke()
@@ -236,42 +381,27 @@ function App() {
         context.globalAlpha = 1
       }
 
-      const ballPosition = getSliderBallPosition(
-        slider,
-        currentTimeMs,
-        sliderPath,
-        sliderMultiplier,
-        beatLength,
-      )
-
       if (ballPosition) {
         const ballX = ballPosition.x * scaleX
         const ballY = ballPosition.y * scaleY
-        const ballSize = circleSize * 0.25
 
-        const gradient = context.createRadialGradient(
-          ballX,
-          ballY,
-          0,
-          ballX,
-          ballY,
-          ballSize,
-        )
-        gradient.addColorStop(0, '#FFFFFF')
-        gradient.addColorStop(0.7, '#DDDDDD')
-        gradient.addColorStop(1, '#AAAAAA')
+        context.save()
+        context.beginPath()
+        context.arc(ballX, ballY, (circleSize * 0.9) / 2, 0, Math.PI * 2)
+        context.closePath()
+        context.fillStyle = '#000'
+        context.globalAlpha = alpha
+        context.fill()
+        context.restore()
 
         context.globalAlpha = alpha
-        context.beginPath()
-        context.fillStyle = gradient
-        context.arc(ballX, ballY, ballSize, 0, Math.PI * 2)
-        context.fill()
-
-        context.beginPath()
-        context.strokeStyle = '#666666'
-        context.lineWidth = 2
-        context.arc(ballX, ballY, ballSize, 0, Math.PI * 2)
-        context.stroke()
+        context.drawImage(
+          image,
+          ballX - circleSize / 2,
+          ballY - circleSize / 2,
+          circleSize,
+          circleSize,
+        )
         context.globalAlpha = 1
       }
     })
@@ -281,10 +411,8 @@ function App() {
         return
       }
 
-      // check if mouse is touching a circle or slider and if it is dont render and set should render to false
       const [mouseX, mouseY] = [inputHandler.mouseX, inputHandler.mouseY]
 
-      // map mouse to osu!pixels (512x384)
       const osuPixelsX = Math.floor(mouseX / (window.innerWidth / 512))
       const osuPixelsY = Math.floor(mouseY / (window.innerHeight / 384))
 
@@ -300,6 +428,12 @@ function App() {
 
         if (dx * dx + dy * dy <= circleRadius * circleRadius) {
           console.log('ooo click')
+
+          AudioController._active?.playHitSound()
+
+          const newScore = score + 300
+          setScore(newScore)
+
           circle.shouldRender = false
           return
         }
@@ -324,20 +458,16 @@ function App() {
         const approachCircleScale = 2 - 1 * approachProgress
         const approachRadius = (circleSize / 2) * approachCircleScale
 
-        const approachCircleImg = new window.Image()
-        approachCircleImg.src = '/skin/approachcircle.png'
-
         context.globalAlpha = alpha
-        if (approachCircleImg.complete) {
+        if (approachCircleImg.current && approachCircleImg.current.complete) {
           context.drawImage(
-            approachCircleImg,
+            approachCircleImg.current,
             scaledX - approachRadius,
             scaledY - approachRadius,
             approachRadius * 2,
             approachRadius * 2,
           )
         } else {
-          // fallback to stroke if image not loaded yet
           context.beginPath()
           context.strokeStyle = '#FFFFFF'
           context.lineWidth = 3
@@ -373,23 +503,31 @@ function App() {
       context.globalAlpha = 1
     })
 
-    const frameEndTime = performance.now()
-    const frameDuration = frameEndTime - frameStartTime
-
     context.restore()
   }, 0)
 
   return (
-    <div className="h-screen w-screen bg-black">
+    <div className="h-screen w-screen bg-black cursor-none">
       <div
-        className="w-14 h-14 rounded-full z-20 absolute bg-white"
+        className="w-48 h-48 rounded-full z-20 absolute flex items-center justify-center -translate-x-1/2 -translate-y-1/2"
         style={{
-          left: inputHandler.mouseX - 28 / 2 + 'px',
-          top: inputHandler.mouseY - 28 / 2 + 'px',
+          left: inputHandler.mouseX + 'px',
+          top: inputHandler.mouseY + 'px',
           pointerEvents: 'none',
-          opacity: 0.5,
         }}
-      ></div>
+      >
+        <img
+          src="/skin/cursor@2x.png"
+          alt=""
+          className="h-48 w-48 object-contain"
+        />
+      </div>
+
+      <div className="z-10 w-screen h-screen absolute top-0 left-0 flex flex-col pointer-events-none">
+        <div className="text-white text-7xl text-center font-mono font-semibold">
+          {score}
+        </div>
+      </div>
 
       <canvas
         ref={canvas}

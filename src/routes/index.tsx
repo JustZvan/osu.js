@@ -21,7 +21,7 @@ function RouteComponent() {
           </h1>
           <p className="mx-auto max-w-2xl text-balance text-zinc-300 sm:text-lg">
             A lightweight osu! engine that runs in a browser! Work in progress,
-            no inputs yet, only (very broken) rendering.
+            some things inaccurate, may contain traces of bad code.
           </p>
         </div>
 
@@ -30,7 +30,7 @@ function RouteComponent() {
             to="/test"
             className="inline-flex items-center justify-center rounded-lg bg-yellow-400 px-6 py-3 font-semibold text-black shadow-lg shadow-yellow-400/20 ring-1 ring-yellow-300 transition hover:translate-y-0.5 hover:bg-yellow-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-200"
           >
-            ▶ Check out the demo!
+            ▶ Play the demo!
           </Link>
         </div>
 
