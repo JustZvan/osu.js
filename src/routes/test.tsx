@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { GameController } from '@/lib/GameController'
-import useInterval from '@/lib/hooks/useInterval'
+import { useAnimationFrame } from '@/lib/hooks/useAnimationFrame'
 import { calculateSliderPath, getSliderBallPosition } from '@/lib/SliderUtils'
 import { parseOszFile } from '@/lib/osu/compressed'
 
@@ -69,15 +69,13 @@ function App() {
     main()
   }, [])
 
-  useInterval(async () => {
+  useAnimationFrame(() => {
     if (!canvas.current || !image || !gc) return
 
-    let frameStartTime = performance.now()
-
     const context = canvas.current.getContext('2d')!
-
-    const circles = await gc?.getVisibleCircles()
-    const sliders = await gc?.getVisibleSliders()
+    const currentTime = gc.audioController.getTime()
+    const circles = gc.getVisibleCircles(currentTime)
+    const sliders = gc.getVisibleSliders(currentTime)
 
     context.clearRect(0, 0, canvas.current.width, canvas.current.height)
 
@@ -113,7 +111,6 @@ function App() {
     const circleRadius = 54.4 - 4.48 * cs
     const circleSize = circleRadius * 2 * Math.min(scaleX, scaleY)
 
-    const currentTime = await gc.audioController.getTime()
     const currentTimeMs = currentTime * 1000
     const sliderMultiplier =
       parseFloat(gc.beatmap.difficulty.sliderMultiplier) || 1.4
@@ -299,12 +296,7 @@ function App() {
     })
 
     context.restore()
-
-    const renderTimeFinal = performance.now() - frameStartTime
-
-    console.log(`Render time: ${renderTimeFinal.toFixed(2)} ms`)
-    console.log(`FPS: ${(1000 / renderTimeFinal).toFixed(2)}`)
-  }, 0)
+  })
 
   return (
     <div className="h-screen w-screen bg-black">

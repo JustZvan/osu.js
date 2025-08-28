@@ -27,11 +27,11 @@ export class GameController {
    * @param fadeOutTime How long after hit time to keep showing circles (default: 100ms)
    * @returns Array of circle hit objects that should be visible
    */
-  async getVisibleCircles(
+  getVisibleCircles(
+    currentTime: number,
     preemptTime: number = 300,
     fadeOutTime: number = 100,
-  ): Promise<HitObject[]> {
-    const currentTime = await this.audioController.getTime()
+  ): HitObject[] {
     const currentTimeMs = currentTime * 1000
 
     return this.beatmap.hitobjects.filter((hitObject) => {
@@ -51,11 +51,11 @@ export class GameController {
    * @param fadeOutTime How long after end time to keep showing sliders (default: 100ms)
    * @returns Array of slider hit objects that should be visible
    */
-  async getVisibleSliders(
+  getVisibleSliders(
+    currentTime: number,
     preemptTime: number = 300,
     fadeOutTime: number = 100,
-  ): Promise<HitObject[]> {
-    const currentTime = await this.audioController.getTime()
+  ): HitObject[] {
     const currentTimeMs = currentTime * 1000
 
     return this.beatmap.hitobjects.filter((hitObject) => {

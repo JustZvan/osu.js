@@ -19,7 +19,7 @@ export class AudioController {
     source.start(0)
   }
 
-  async getTime() {
+  getTime() {
     return this.context.currentTime
   }
 }
