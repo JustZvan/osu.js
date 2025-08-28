@@ -176,7 +176,11 @@ function App() {
         const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
         const circleRadius = 54.4 - 4.48 * cs
 
-        AudioController._active?.playHitSound()
+        if (slider.shouldPlayHitSound) {
+          AudioController._active?.playHitSound()
+
+          slider.shouldPlayHitSound = false
+        }
 
         if (dx * dx + dy * dy <= circleRadius * circleRadius) {
           sliderAny.isActive = true

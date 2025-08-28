@@ -68,6 +68,8 @@ export class HitObject {
   hitSample: string
   shouldRender: boolean = true
 
+  shouldPlayHitSound: boolean = true
+
   constructor({ x, y, time, type, hitSound, objType, params, hitSample }: any) {
     this.x = x
     this.y = y
@@ -77,12 +79,5 @@ export class HitObject {
     this.objType = objType
     this.params = params
     this.hitSample = hitSample
-  }
-
-  async hit() {
-    // function to handle click
-    if (this.objType == 'circle') {
-      this.shouldRender = false
-    }
   }
 }
