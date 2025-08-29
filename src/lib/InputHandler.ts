@@ -39,6 +39,10 @@ export class InputHandler {
         this.shouldHit = true
       }
     })
+
+    window.addEventListener('mousedown', () => {
+      this.shouldHit = true
+    })
   }
 
   destroy() {
