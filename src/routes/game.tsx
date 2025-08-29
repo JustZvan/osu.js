@@ -82,7 +82,7 @@ function App() {
     }
 
     async function loadDemoBeatmap() {
-      const { beatmaps, files } = await parseOszFile('/badapple.osz')
+      const { beatmaps, files } = await parseOszFile('/tetoris.osz')
 
       const hardBeatmap =
         beatmaps.find((b) => b.metadata.version === 'Hard') || beatmaps[0]
@@ -305,7 +305,7 @@ function App() {
         const segmentProgress = (pathProgress * totalPathLength) % 1
 
         context.save()
-        context.globalAlpha = alpha
+        context.globalAlpha = alpha / 2
 
         context.beginPath()
         context.strokeStyle = '#333333'
@@ -468,7 +468,7 @@ function App() {
         context.arc(ballX, ballY, (circleSize * 0.9) / 2, 0, Math.PI * 2)
         context.closePath()
         context.fillStyle = '#000'
-        context.globalAlpha = alpha
+        context.globalAlpha = alpha / 2
         context.fill()
         context.restore()
 
@@ -538,7 +538,7 @@ function App() {
       context.arc(scaledX, scaledY, (circleSize * 0.9) / 2, 0, Math.PI * 2)
       context.closePath()
       context.fillStyle = '#000'
-      context.globalAlpha = alpha
+      context.globalAlpha = alpha / 2
       context.fill()
       context.restore()
 
