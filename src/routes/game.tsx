@@ -82,10 +82,11 @@ function App() {
     }
 
     async function loadDemoBeatmap() {
-      const { beatmaps, files } = await parseOszFile('/badapple.osz')
+      const { beatmaps, files } = await parseOszFile('/mesmerizer.osz')
 
       const hardBeatmap =
-        beatmaps.find((b) => b.metadata.version === 'Hard') || beatmaps[0]
+        beatmaps.find((b) => b.metadata.version === "sing's insane") ||
+        beatmaps[0]
 
       if (!hardBeatmap) {
         console.error('No beatmap found')
@@ -217,12 +218,12 @@ function App() {
       const x = (canvas.current.width - scaledWidth) / 2
       const y = (canvas.current.height - scaledHeight) / 2
 
-      context.drawImage(backgroundImage, x, y, scaledWidth, scaledHeight)
-
       context.fillStyle = '#000'
       context.globalAlpha = 0.4
       context.fill()
       context.restore()
+
+      context.drawImage(backgroundImage, x, y, scaledWidth, scaledHeight)
     }
 
     const zoomFactor = 0.9
