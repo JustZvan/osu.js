@@ -726,7 +726,7 @@ function App() {
   }
 
   return (
-    <div className="h-screen w-screen bg-black cursor-none">
+    <div className="h-screen w-screen bg-black cursor-none overflow-hidden absolute">
       <div
         className="w-48 h-48 rounded-full z-20 absolute flex items-center justify-center -translate-x-1/2 -translate-y-1/2"
         style={{
