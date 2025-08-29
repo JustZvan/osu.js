@@ -218,6 +218,11 @@ function App() {
       const y = (canvas.current.height - scaledHeight) / 2
 
       context.drawImage(backgroundImage, x, y, scaledWidth, scaledHeight)
+
+      context.fillStyle = '#000'
+      context.globalAlpha = 0.4
+      context.fill()
+      context.restore()
     }
 
     const zoomFactor = 0.9
