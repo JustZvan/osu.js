@@ -82,7 +82,7 @@ function App() {
     }
 
     async function loadDemoBeatmap() {
-      const { beatmaps, files } = await parseOszFile('/tetoris.osz')
+      const { beatmaps, files } = await parseOszFile('/badapple.osz')
 
       const hardBeatmap =
         beatmaps.find((b) => b.metadata.version === 'Hard') || beatmaps[0]
