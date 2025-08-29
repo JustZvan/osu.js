@@ -82,11 +82,10 @@ function App() {
     }
 
     async function loadDemoBeatmap() {
-      const { beatmaps, files } = await parseOszFile('/mesmerizer.osz')
+      const { beatmaps, files } = await parseOszFile('/badapple.osz')
 
       const hardBeatmap =
-        beatmaps.find((b) => b.metadata.version === "sing's insane") ||
-        beatmaps[0]
+        beatmaps.find((b) => b.metadata.version === 'Hard') || beatmaps[0]
 
       if (!hardBeatmap) {
         console.error('No beatmap found')
