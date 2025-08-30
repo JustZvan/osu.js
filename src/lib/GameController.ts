@@ -75,6 +75,25 @@ export class GameController {
     })
   }
 
+  async getVisibleSpinners(): Promise<HitObject[]> {
+    const currentTime = await this.audioController.getTime()
+    const currentTimeMs = currentTime * 1000
+
+    return this.beatmap.hitobjects.filter((hitObject) => {
+      if (hitObject.objType !== 'spinner') return false
+
+      const hitTime = hitObject.time
+      const showTime = hitTime - preemptTime
+      const endTime = hitObject.params.endTime
+      const timeSinceEnd = currentTimeMs - endTime
+      const alpha = timeSinceEnd > 0 ? Math.max(0, 1 - timeSinceEnd / 100) : 1
+
+      hitObject.spinnerStartTime = hitTime
+
+      return currentTimeMs >= showTime && alpha > 0
+    })
+  }
+
   /**
    * Get the beat length at a specific time from timing points
    */

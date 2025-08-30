@@ -203,6 +203,7 @@ function App() {
 
     const circles = await gc?.getVisibleCircles()
     const sliders = await gc?.getVisibleSliders()
+    const spinners = await gc?.getVisibleSpinners()
 
     context.clearRect(0, 0, canvas.current.width, canvas.current.height)
 
@@ -484,6 +485,42 @@ function App() {
       }
     })
 
+    spinners?.forEach((spinner) => {
+      if (!spinner.shouldRender) {
+        return
+      }
+
+      const scaledX = spinner.x * scaleX
+      const scaledY = spinner.y * scaleY
+
+      const progress = Math.max(
+        0,
+        Math.min(
+          1,
+          (currentTimeMs - spinner.time) /
+            (spinner.params.endTime - spinner.time),
+        ),
+      )
+
+      const spinnerAny = spinner as any
+      if (spinnerAny.rotation === undefined) spinnerAny.rotation = 0
+
+      if (spinnerAny.spinsRequired === undefined) {
+        const duration = spinner.params.endTime - spinner.time
+        spinnerAny.spinsRequired = Math.max(3, Math.floor(duration / 500))
+      }
+
+      if (spinnerAny.spinsCompleted === undefined) spinnerAny.spinsCompleted = 0
+
+      let outerRadius = 300 * (1 - progress)
+
+      context.strokeStyle = '#FFFFFF'
+      context.lineWidth = 3
+      context.beginPath()
+      context.arc(scaledX, scaledY, outerRadius, 0, Math.PI * 2)
+      context.stroke()
+    })
+
     circles?.forEach((circle) => {
       if (!circle.shouldRender) {
         return
@@ -561,11 +598,127 @@ function App() {
 
     const circles = await gc?.getVisibleCircles()
     const sliders = await gc?.getVisibleSliders()
+    const spinners = await gc?.getVisibleSpinners()
 
     const currentTime = await gc.audioController.getTime()
     const currentTimeMs = currentTime * 1000
     const sliderMultiplier =
       parseFloat(gc.beatmap.difficulty.sliderMultiplier) || 1.4
+
+    // Handle spinner spinning logic
+    spinners?.forEach((spinner) => {
+      if (!spinner.shouldRender) {
+        return
+      }
+
+      const spinnerAny = spinner as any
+      if (spinnerAny.rotation === undefined) spinnerAny.rotation = 0
+      if (spinnerAny.spinsRequired === undefined) {
+        const duration = spinner.params.endTime - spinner.time
+        spinnerAny.spinsRequired = Math.max(3, Math.floor(duration / 500))
+      }
+      if (spinnerAny.spinsCompleted === undefined) spinnerAny.spinsCompleted = 0
+      if (spinnerAny.lastMouseAngle === undefined) spinnerAny.lastMouseAngle = 0
+      if (spinnerAny.lastRotationTime === undefined)
+        spinnerAny.lastRotationTime = currentTimeMs
+
+      const [mouseX, mouseY] = [inputHandler.mouseX, inputHandler.mouseY]
+      const canvasRect = canvas.current?.getBoundingClientRect()
+      if (!canvasRect) return
+
+      // Convert mouse position to canvas coordinates
+      const canvasX = mouseX - canvasRect.left
+      const canvasY = mouseY - canvasRect.top
+
+      // Convert to osu! coordinates
+      const scaleX = canvas.current!.width / 512
+      const scaleY = canvas.current!.height / 384
+      const zoomFactor = 0.9
+      const offsetX =
+        (canvas.current!.width - canvas.current!.width * zoomFactor) / 2
+      const offsetY =
+        (canvas.current!.height - canvas.current!.height * zoomFactor) / 2
+
+      const adjustedX = (canvasX - offsetX) / zoomFactor
+      const adjustedY = (canvasY - offsetY) / zoomFactor
+
+      const spinnerX = spinner.x * scaleX
+      const spinnerY = spinner.y * scaleY
+
+      // Calculate angle from spinner center to mouse
+      const dx = adjustedX - spinnerX
+      const dy = adjustedY - spinnerY
+      const currentMouseAngle = Math.atan2(dy, dx)
+
+      // Check if mouse is being held down and is within spinning range
+      const distance = Math.sqrt(dx * dx + dy * dy)
+      const isInRange = distance < 200 // 200 pixel radius for spinning
+
+      if (
+        InputHandler._active?.isMouseDown &&
+        isInRange &&
+        currentTimeMs >= spinner.time &&
+        currentTimeMs <= spinner.params.endTime
+      ) {
+        // Calculate angular difference
+        let angleDiff = currentMouseAngle - spinnerAny.lastMouseAngle
+
+        // Handle angle wrap-around
+        if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI
+        if (angleDiff < -Math.PI) angleDiff += 2 * Math.PI
+
+        // Only register significant movement to avoid jitter
+        if (Math.abs(angleDiff) > 0.05) {
+          spinnerAny.rotation += angleDiff
+
+          // Calculate rotation speed
+          const timeDiff = currentTimeMs - spinnerAny.lastRotationTime
+          if (timeDiff > 0) {
+            spinnerAny.rotationSpeed = Math.abs(angleDiff) / (timeDiff / 1000)
+          }
+
+          spinnerAny.lastRotationTime = currentTimeMs
+          spinnerAny.lastMouseAngle = currentMouseAngle
+
+          const totalRotation = Math.abs(spinnerAny.rotation)
+          const newSpinsCompleted = Math.floor(totalRotation / (Math.PI * 2))
+
+          if (newSpinsCompleted > spinnerAny.spinsCompleted) {
+            const additionalSpins =
+              newSpinsCompleted - spinnerAny.spinsCompleted
+            spinnerAny.spinsCompleted = newSpinsCompleted
+
+            AudioController._active?.playHitSound()
+
+            if (spinnerAny.spinsCompleted > spinnerAny.spinsRequired) {
+              const bonusSpins = Math.min(
+                additionalSpins,
+                spinnerAny.spinsCompleted - spinnerAny.spinsRequired,
+              )
+              if (bonusSpins > 0) {
+                setScore((prev) => prev + bonusSpins * 50)
+              }
+            }
+          }
+        }
+      } else {
+        spinnerAny.lastMouseAngle = currentMouseAngle
+      }
+
+      // Check if spinner is completed
+      if (currentTimeMs > spinner.params.endTime) {
+        if (spinner.shouldRender) {
+          // Award points based on completion
+          const completionRatio = Math.min(
+            1,
+            spinnerAny.spinsCompleted / spinnerAny.spinsRequired,
+          )
+          const points = Math.floor(300 * completionRatio)
+          setScore((prev) => prev + points)
+        }
+        spinner.shouldRender = false
+      }
+    })
 
     sliders?.forEach((slider) => {
       if (!slider.shouldRender) {

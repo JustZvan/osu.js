@@ -7,6 +7,7 @@ export class InputHandler {
   mouseY: number = 0
   private onMouseMove?: (x: number, y: number) => void
   shouldHit: boolean = false
+  isMouseDown: boolean = false
 
   constructor(onMouseMove?: (x: number, y: number) => void) {
     InputHandler._active = this
@@ -42,6 +43,11 @@ export class InputHandler {
 
     window.addEventListener('mousedown', () => {
       this.shouldHit = true
+      this.isMouseDown = true
+    })
+
+    window.addEventListener('mouseup', () => {
+      this.isMouseDown = false
     })
   }
 

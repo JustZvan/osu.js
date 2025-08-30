@@ -70,6 +70,8 @@ export class HitObject {
 
   shouldPlayHitSound: boolean = true
 
+  spinnerStartTime: number = 0
+
   constructor({ x, y, time, type, hitSound, objType, params, hitSample }: any) {
     this.x = x
     this.y = y
