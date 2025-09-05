@@ -473,6 +473,15 @@ function App() {
         context.fill()
         context.restore()
 
+        context.save()
+        context.beginPath()
+        context.arc(ballX, ballY, circleSize, 0, Math.PI * 2)
+        context.closePath()
+        context.strokeStyle = '#FFFFFF'
+        context.lineWidth = 3
+        context.stroke()
+        context.restore()
+
         context.globalAlpha = alpha
         context.drawImage(
           image,
@@ -776,7 +785,9 @@ function App() {
         const dy = osuPixelsY - ballPosition.y
         const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
         const circleRadius = 54.4 - 4.48 * cs
-        if (dx * dx + dy * dy <= circleRadius * circleRadius) {
+
+        const trackingRadius = circleRadius * 2
+        if (dx * dx + dy * dy <= trackingRadius * trackingRadius) {
           sliderAny.userProgress = currentTimeMs - slider.time
         } else {
           sliderAny.isActive = false
@@ -787,7 +798,7 @@ function App() {
         currentTimeMs > endTime ||
         sliderAny.userProgress >= slideDuration * slider.params.slides
       ) {
-        if (slider.shouldRender) {
+        if (slider.shouldRender && sliderAny.isActive) {
           setScore((prev) => prev + 300)
         }
         slider.shouldRender = false
@@ -821,6 +832,7 @@ function App() {
           AudioController._active?.playHitSound()
 
           const newScore = score + 300
+          setCombo((prev) => prev + 1)
           setScore(newScore)
 
           circle.shouldRender = false
