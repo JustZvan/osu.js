@@ -31,6 +31,8 @@ function App() {
   const inputHandler = useInputHandler()
   const [score, setScore] = useState(0)
 
+  const [combo, setCombo] = useState(0)
+
   const [showDifficultySelect, setShowDifficultySelect] = useState(false)
   const [availableDifficulties, setAvailableDifficulties] = useState<
     Array<{
@@ -722,8 +724,16 @@ function App() {
             1,
             spinnerAny.spinsCompleted / spinnerAny.spinsRequired,
           )
-          const points = Math.floor(300 * completionRatio)
-          setScore((prev) => prev + points)
+
+          if (completionRatio === 0) {
+            // If no spins were completed, it's a miss
+            console.log('spinner miss!')
+            setCombo(0)
+          } else {
+            const points = Math.floor(300 * completionRatio)
+            setScore((prev) => prev + points)
+            setCombo((prev) => prev + 1)
+          }
         }
         spinner.shouldRender = false
       }
@@ -737,11 +747,23 @@ function App() {
       const sliderAny = slider as any
       if (sliderAny.userProgress === undefined) sliderAny.userProgress = 0
       if (sliderAny.isActive === undefined) sliderAny.isActive = false
+      if (sliderAny.hasStarted === undefined) sliderAny.hasStarted = false
 
       const beatLength = gc.getBeatLengthAt(slider.time)
       const pixelsPerBeat = sliderMultiplier * 100
       const slideDuration = (slider.params.length / pixelsPerBeat) * beatLength
       const endTime = slider.time + slideDuration * slider.params.slides
+
+      // Check for slider miss - if we're past the hit window and haven't started tracking
+      const hitWindow = 150 // ms after slider time to consider it a miss
+      if (currentTimeMs > slider.time + hitWindow && !sliderAny.hasStarted) {
+        if (slider.shouldRender) {
+          console.log('slider miss!')
+          setCombo(0) // Reset combo on miss
+          slider.shouldRender = false
+        }
+        return
+      }
 
       const sliderPath = calculateSliderPath(slider)
 
@@ -777,6 +799,7 @@ function App() {
 
         if (dx * dx + dy * dy <= circleRadius * circleRadius) {
           sliderAny.isActive = true
+          sliderAny.hasStarted = true // Mark that the slider has been started
         }
       }
 
@@ -798,8 +821,14 @@ function App() {
         currentTimeMs > endTime ||
         sliderAny.userProgress >= slideDuration * slider.params.slides
       ) {
-        if (slider.shouldRender && sliderAny.isActive) {
-          setScore((prev) => prev + 300)
+        if (slider.shouldRender) {
+          if (sliderAny.isActive && sliderAny.hasStarted) {
+            setScore((prev) => prev + 300)
+            setCombo((prev) => prev + 1)
+          } else {
+            console.log('slider incomplete!')
+            setCombo(0)
+          }
         }
         slider.shouldRender = false
         return
@@ -816,6 +845,15 @@ function App() {
       const osuPixelsX = Math.floor(mouseX / (window.innerWidth / 512))
       const osuPixelsY = Math.floor(mouseY / (window.innerHeight / 384))
 
+      if (currentTimeMs > circle.time) {
+        if (circle.shouldRender) {
+          console.log('miss!')
+          setCombo(0)
+          circle.shouldRender = false
+        }
+        return
+      }
+
       if (InputHandler._active?.shouldHit) {
         InputHandler._active.shouldHit = false
 
@@ -831,7 +869,7 @@ function App() {
 
           AudioController._active?.playHitSound()
 
-          const newScore = score + 300
+          const newScore = score + 300 * (1 + combo) // unfinished calculation
           setCombo((prev) => prev + 1)
           setScore(newScore)
 
@@ -907,9 +945,20 @@ function App() {
         />
       </div>
 
-      <div className="z-10 w-screen h-screen absolute top-0 left-0 flex flex-col pointer-events-none">
-        <div className="text-white text-7xl text-center font-mono font-semibold">
-          {score}
+      {/* Overlay UI layout */}
+      <div className="z-10 w-screen h-screen absolute top-0 left-0 flex flex-col justify-between pointer-events-none">
+        {/* Top bar: Score */}
+        <div className="flex justify-end w-full p-8">
+          <div className="text-white text-5xl font-semibold">
+            {score.toString().padStart(6, '0')}
+          </div>
+        </div>
+
+        <div className="flex justify-start w-full p-8">
+          <div className="font-bold drop-shadow-lg">
+            <span className="text-6xl">{combo}</span>{' '}
+            <span className="text-xl text-yellow-400">X</span>
+          </div>
         </div>
       </div>
 
