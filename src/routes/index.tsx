@@ -41,9 +41,14 @@ export const Route = createFileRoute('/')({
   component: RouteComponent,
 })
 
-function BeatmapCard({ beatmap }: { beatmap: BeatmapInfo }) {
+function BeatmapCard({
+  beatmap,
+  savedBeatmaps,
+}: {
+  beatmap: BeatmapInfo
+  savedBeatmaps: ReturnType<typeof useSavedBeatmaps>
+}) {
   const audioRef = useRef<HTMLAudioElement>(null)
-  const savedBeatmaps = useSavedBeatmaps()
 
   return (
     <div
@@ -121,47 +126,58 @@ function BeatmapCard({ beatmap }: { beatmap: BeatmapInfo }) {
   )
 }
 
-function BeatmapBrowser() {
+function BeatmapBrowser({
+  setIsOpen,
+  savedBeatmaps,
+}: {
+  setIsOpen: (open: boolean) => void
+  savedBeatmaps: ReturnType<typeof useSavedBeatmaps>
+}) {
   const beatmapProvider = useMemo(() => new OsuDirectBeatmapProvider(), [])
   const [results, setResults] = useState<BeatmapInfo[]>([])
 
   return (
-    <div
-      className={`absolute left-0 top-0 w-full h-full z-30 bg-black/60 flex`}
-    >
-      <div className="flex w-full h-full justify-center px-48">
-        <div className="flex flex-col w-full">
-          <div className="min-h-20 bg-gray-800 flex items-center text-3xl px-24 w-full gap-6">
-            <MdOutlineLibraryMusic className="text-5xl" />
-            <div>beatmap listing</div>
-          </div>
+    <div className="absolute left-0 top-0 w-full h-full z-30 flex pointer-events-auto">
+      <div
+        onClick={() => setIsOpen(false)}
+        className="absolute h-screen w-screen -z-10 bg-black/60"
+      ></div>
 
-          <div className="min-h-48 bg-zinc-900 px-16 flex items-center justify-center">
-            <input
-              type="text"
-              className="w-full px-4 h-14 bg-zinc-800 rounded-lg"
-              placeholder="type in keywords..."
-              onChange={async (e) => {
-                const query = e.target.value
+      <div className="flex flex-col w-[90%] absolute left-1/2 -translate-x-1/2 h-full">
+        <div className="min-h-20 bg-gray-800 flex items-center text-3xl px-24 w-full gap-6">
+          <MdOutlineLibraryMusic className="text-5xl" />
+          <div>beatmap listing</div>
+        </div>
 
-                const beatmaps = await beatmapProvider.searchBeatmaps(query)
-                setResults(beatmaps)
-              }}
-            />
-          </div>
+        <div className="min-h-48 bg-zinc-900 px-16 flex items-center justify-center">
+          <input
+            type="text"
+            className="w-full px-4 h-14 bg-zinc-800 rounded-lg"
+            placeholder="type in keywords..."
+            onChange={async (e) => {
+              const query = e.target.value
 
-          <div className="max-h-full h-full bg-zinc-900 overflow-y-auto overflow-x-hidden">
-            <div className="p-8 grid grid-cols-4 gap-6 items-center">
-              {results.length === 0 ? (
-                <div className="text-zinc-400 col-span-4 text-center">
-                  No beatmaps found.
-                </div>
-              ) : (
-                results.map((beatmap) => (
-                  <BeatmapCard key={beatmap.id} beatmap={beatmap} />
-                ))
-              )}
-            </div>
+              const beatmaps = await beatmapProvider.searchBeatmaps(query)
+              setResults(beatmaps)
+            }}
+          />
+        </div>
+
+        <div className="max-h-full h-full bg-zinc-900 overflow-y-auto overflow-x-hidden">
+          <div className="p-8 grid grid-cols-4 gap-6 items-center">
+            {results.length === 0 ? (
+              <div className="text-zinc-400 col-span-4 text-center">
+                No beatmaps found.
+              </div>
+            ) : (
+              results.map((beatmap) => (
+                <BeatmapCard
+                  key={beatmap.id}
+                  beatmap={beatmap}
+                  savedBeatmaps={savedBeatmaps}
+                />
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -444,7 +460,12 @@ function RouteComponent() {
           className="absolute h-screen w-screen opacity-80 object-cover -z-10 blur-xl transition-all duration-1000"
         />
 
-        {showLibrary && <BeatmapBrowser />}
+        {showLibrary && (
+          <BeatmapBrowser
+            setIsOpen={(_) => setShowLibrary(false)}
+            savedBeatmaps={savedBeatmaps}
+          />
+        )}
 
         <div
           className={`absolute left-0 top-14 h-full bg-settings-bg-2 z-10 flex transition-transform dur</svg>ation-300 ${
