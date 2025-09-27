@@ -286,7 +286,7 @@ function App() {
     const sliderMultiplier =
       parseFloat(gc.beatmap.difficulty.sliderMultiplier) || 1.4
 
-    sliders?.forEach((slider) => {
+    sliders?.forEach((slider, index) => {
       if (!slider.shouldRender) {
         return
       }
@@ -529,6 +529,17 @@ function App() {
         )
         context.globalAlpha = 1
       }
+
+      const sliderNumber = ((index + 1) % 10).toString()
+      const fontSize = circleSize * 0.4
+      context.font = `bold ${fontSize}px Arial`
+      context.textAlign = 'center'
+      context.textBaseline = 'middle'
+      context.fillStyle = '#FFFFFF'
+      context.strokeStyle = '#000000'
+      context.lineWidth = fontSize * 0.08
+      context.strokeText(sliderNumber, scaledX, scaledY)
+      context.fillText(sliderNumber, scaledX, scaledY)
     })
 
     spinners?.forEach((spinner) => {
@@ -567,7 +578,7 @@ function App() {
       context.stroke()
     })
 
-    circles?.forEach((circle) => {
+    circles?.forEach((circle, index) => {
       if (!circle.shouldRender) {
         return
       }
@@ -633,6 +644,18 @@ function App() {
         circleSize,
         circleSize,
       )
+
+      const circleNumber = ((index + 1) % 10).toString()
+      const fontSize = circleSize * 0.4
+      context.font = `bold ${fontSize}px Arial`
+      context.textAlign = 'center'
+      context.textBaseline = 'middle'
+      context.fillStyle = '#FFFFFF'
+      context.strokeStyle = '#000000'
+      context.lineWidth = fontSize * 0.08
+      context.strokeText(circleNumber, scaledX, scaledY)
+      context.fillText(circleNumber, scaledX, scaledY)
+
       context.globalAlpha = 1
     })
 
