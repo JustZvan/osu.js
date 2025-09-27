@@ -4,6 +4,9 @@ export class AudioController {
   audioLeadIn: number
   startTime: number
   gainNode: GainNode
+  private trackSource: AudioBufferSourceNode | null = null
+  private hitSoundSources: Set<AudioBufferSourceNode> = new Set()
+  private destroyed = false
 
   hitSound: AudioBuffer | null = null
   hitSoundLoaded: boolean = false
@@ -21,7 +24,6 @@ export class AudioController {
 
     AudioController._active = this
 
-    // Load hit sound asynchronously but don't block constructor
     this.loadHitSound().catch((error) => {
       console.warn('Failed to load hit sound:', error)
     })
@@ -67,10 +69,26 @@ export class AudioController {
     const audioBuffer = await this.context.decodeAudioData(
       buffer.buffer as ArrayBuffer,
     )
-    const source = this.context.createBufferSource()
-    source.buffer = audioBuffer
-    source.connect(this.gainNode)
-    source.start(this.context.currentTime + this.audioLeadIn / 1000)
+
+    if (this.destroyed) {
+      return
+    }
+
+    this.trackSource = this.context.createBufferSource()
+    this.trackSource.buffer = audioBuffer
+    this.trackSource.connect(this.gainNode)
+    const startAt = this.context.currentTime + this.audioLeadIn / 1000
+    this.startTime = this.context.currentTime
+    this.trackSource.start(startAt)
+
+    this.trackSource.onended = () => {
+      if (this.trackSource === null) return
+      this.trackSource.disconnect()
+      this.trackSource = null
+      if (AudioController._active === this) {
+        AudioController._active = null
+      }
+    }
   }
 
   async getTime() {
@@ -92,6 +110,11 @@ export class AudioController {
       const source = this.context.createBufferSource()
       source.buffer = this.hitSound
       source.connect(hitSoundGainNode)
+      this.hitSoundSources.add(source)
+      source.onended = () => {
+        source.disconnect()
+        this.hitSoundSources.delete(source)
+      }
       source.start()
       console.log('Hit sound played')
     } catch (error) {
@@ -100,8 +123,34 @@ export class AudioController {
   }
 
   destroy() {
+    if (this.destroyed) return
+    this.destroyed = true
+
     if (AudioController._active === this) {
       AudioController._active = null
     }
+
+    try {
+      this.trackSource?.stop()
+    } catch (error) {
+      console.warn('Failed to stop track source:', error)
+    }
+
+    this.trackSource?.disconnect()
+    this.trackSource = null
+
+    this.hitSoundSources.forEach((source) => {
+      try {
+        source.stop()
+      } catch (error) {
+        console.warn('Failed to stop hit sound source:', error)
+      }
+      source.disconnect()
+    })
+    this.hitSoundSources.clear()
+
+    this.context.close().catch((error) => {
+      console.warn('Failed to close audio context:', error)
+    })
   }
 }

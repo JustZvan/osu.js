@@ -15,17 +15,45 @@ export function calculateSliderPath(slider: HitObject): SliderPath {
     throw new Error('Hit object is not a slider')
   }
 
+  const originalSlider = (slider as any)?.original
+  const originalPath = originalSlider?.path
+
+  if (originalPath?.positionAt) {
+    const distanceCandidate =
+      typeof originalSlider?.distance === 'number'
+        ? originalSlider.distance
+        : typeof originalPath?.expectedDistance === 'number'
+          ? originalPath.expectedDistance
+          : typeof slider.params?.length === 'number'
+            ? slider.params.length
+            : 0
+
+    const samples = Math.max(50, Math.ceil(distanceCandidate / 2))
+    const points: Point[] = []
+
+    for (let i = 0; i <= samples; i++) {
+      const t = samples === 0 ? 0 : i / samples
+      const vector = originalPath.positionAt(t)
+      if (!vector) continue
+
+      points.push({
+        x: slider.x + vector.x,
+        y: slider.y + vector.y,
+      })
+    }
+
+    if (points.length < 2) {
+      points.push({ x: slider.x, y: slider.y })
+    }
+
+    return {
+      points,
+      length: distanceCandidate,
+    }
+  }
+
   const { curveType, curvePoints, length } = slider.params
   const startPoint: Point = { x: slider.x, y: slider.y }
-
-  // if (curveType === 'B' || curveType === 'P') {
-  //   console.log(`Processing ${curveType} slider:`, {
-  //     curveType,
-  //     curvePoints,
-  //     length,
-  //     startPoint,
-  //   })
-  // }
 
   const controlPoints: Point[] = [startPoint]
 
@@ -68,9 +96,6 @@ export function calculateSliderPath(slider: HitObject): SliderPath {
   }
 
   if (curveType === 'B' || curveType === 'P') {
-    // console.log(
-    //   `Generated ${pathPoints.length} path points for ${curveType} slider`,
-    // )
   }
 
   return {

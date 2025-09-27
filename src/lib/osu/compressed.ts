@@ -1,7 +1,10 @@
 import * as fflate from 'fflate'
-import { Beatmap } from './parser'
+import { BeatmapLoader } from './parser'
+import type { Beatmap } from 'osu-classes'
 
-export async function parseOszFile(url: string) {
+export async function parseOszFile(
+  url: string,
+): Promise<{ beatmaps: Beatmap[]; files: fflate.Unzipped }> {
   const res = await fetch(url)
   const arrayBuffer = await res.arrayBuffer()
   const uint8Array = new Uint8Array(arrayBuffer)
@@ -17,10 +20,12 @@ export async function parseOszFile(url: string) {
     filename.endsWith('.osu'),
   )
 
+  const loader = new BeatmapLoader()
   const beatmaps = osuFiles.map((filename) => {
     const content = files[filename]
+    const contentString = new TextDecoder().decode(content)
 
-    return new Beatmap(new TextDecoder().decode(content))
+    return loader.parseFromString(contentString)
   })
 
   return { beatmaps, files }

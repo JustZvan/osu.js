@@ -30,7 +30,6 @@ export class OsuDirectBeatmapProvider extends BeatmapProvider {
         preview_url: string
         beatmaps: any[]
       }) => {
-        // get this weirdo shit out of here
         if (nsfw) return
 
         const submaps = submapsData

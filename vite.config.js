@@ -12,17 +12,17 @@ export default defineConfig({
     viteReact(),
     tailwindcss(),
     nodePolyfills({
-      // To exclude specific polyfills, add them to this list.
+       
       exclude: [
-        'fs', // Excludes the polyfill for `fs` and `node:fs`.
+        'fs',  
       ],
-      // Whether to polyfill specific globals.
+       
       globals: {
         Buffer: true,
         global: true,
         process: true,
       },
-      // Whether to polyfill `node:` protocol imports.
+       
       protocolImports: true,
     }),
   ],

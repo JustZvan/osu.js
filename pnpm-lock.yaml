@@ -29,6 +29,12 @@ importers:
       fflate:
         specifier: ^0.8.2
         version: 0.8.2
+      osu-classes:
+        specifier: ^3.1.0
+        version: 3.1.0
+      osu-parsers:
+        specifier: ^4.1.7
+        version: 4.1.7(osu-classes@3.1.0)
       react:
         specifier: ^19.0.0
         version: 19.1.1

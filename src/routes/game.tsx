@@ -2,13 +2,17 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { GameController } from '@/lib/GameController'
 import useInterval from '@/lib/hooks/useInterval'
-import { calculateSliderPath, getSliderBallPosition } from '@/lib/SliderUtils'
+import {
+  calculateSliderPath,
+  getSliderBallPosition,
+} from '@/lib/osu/SliderUtils'
 import { parseOszFile } from '@/lib/osu/compressed'
 import useInputHandler from '@/lib/hooks/useInputHandler'
 import { preemptTime } from '@/lib/GameController'
 import { InputHandler } from '@/lib/InputHandler'
 import { AudioController } from '@/lib/AudioController'
-import { Beatmap } from '@/lib/osu/parser'
+import { getHitTime, getStartPosition } from '@/lib/osu/adapter'
+import type { Beatmap, HitObject } from 'osu-classes'
 
 export const Route = createFileRoute('/game')({
   component: App,
@@ -54,6 +58,72 @@ function App() {
   const [allBeatmaps, setAllBeatmaps] = useState<Beatmap[]>([])
   const [oszFiles, setOszFiles] = useState<any>(null)
 
+  const getSliderRuntime = (slider: HitObject) => {
+    const sliderAny = slider as any
+    const slides =
+      typeof sliderAny.spans === 'number'
+        ? sliderAny.spans
+        : typeof sliderAny.repeats === 'number'
+          ? sliderAny.repeats + 1
+          : typeof sliderAny.repeatCount === 'number'
+            ? sliderAny.repeatCount + 1
+            : 1
+
+    const length =
+      typeof sliderAny.path?.expectedDistance === 'number'
+        ? sliderAny.path.expectedDistance
+        : typeof sliderAny.distance === 'number'
+          ? sliderAny.distance
+          : typeof sliderAny.params?.length === 'number'
+            ? sliderAny.params.length
+            : 0
+
+    return {
+      sliderAny,
+      slides: Math.max(1, slides),
+      length: Math.max(0, length),
+      startTime: getHitTime(slider),
+      startPosition: getStartPosition(slider),
+    }
+  }
+
+  const getSpinnerRuntime = (spinner: HitObject) => {
+    const spinnerAny = spinner as any
+    const startTime = getHitTime(spinner)
+
+    const explicitEndTime =
+      typeof spinnerAny.endTime === 'number'
+        ? spinnerAny.endTime
+        : typeof spinnerAny.params?.endTime === 'number'
+          ? spinnerAny.params.endTime
+          : undefined
+
+    const duration =
+      typeof spinnerAny.duration === 'number'
+        ? spinnerAny.duration
+        : typeof explicitEndTime === 'number'
+          ? explicitEndTime - startTime
+          : 1000
+
+    const endTime =
+      typeof explicitEndTime === 'number'
+        ? explicitEndTime
+        : startTime + duration
+
+    return {
+      spinnerAny,
+      startTime,
+      endTime,
+      position: getStartPosition(spinner),
+    }
+  }
+
+  const getCircleRuntime = (circle: HitObject) => ({
+    circleAny: circle as any,
+    startTime: getHitTime(circle),
+    position: getStartPosition(circle),
+  })
+
   useEffect(() => {
     async function main() {
       if (showDifficultySelect) {
@@ -73,7 +143,6 @@ function App() {
           setAllBeatmaps(beatmaps)
           setOszFiles(files)
 
-          // If we have pre-selected difficulty from beatmapInfo, use it directly
           if (preSelectedDifficulty) {
             const selectedBeatmap = beatmaps.find(
               (b) => b.metadata.version === preSelectedDifficulty,
@@ -132,10 +201,17 @@ function App() {
       await loadBeatmap(hardBeatmap, files)
     }
 
-    async function loadBeatmap(beatmap: Beatmap, files: any) {
-      console.log(beatmap)
+    async function loadBeatmap(newBeatmap: Beatmap, files: any) {
+      console.log(newBeatmap)
 
-      const audioFilename = beatmap.general.audioFilename
+      // Ensure only one audio is playing at once
+      if (AudioController._active) {
+        AudioController._active.destroy?.()
+        AudioController._active = null
+      }
+      gc?.audioController?.destroy?.()
+
+      const audioFilename = newBeatmap.general.audioFilename
       const audioFile = files[audioFilename]
 
       if (!audioFile) {
@@ -143,16 +219,16 @@ function App() {
         return
       }
 
-      const gc = new GameController(beatmap, audioFile)
-      setGc(gc)
+      const audioController = new AudioController(audioFile)
+      AudioController._active = audioController
+      const newGc = new GameController(newBeatmap, audioController)
+      setGc(newGc)
 
       const img = new window.Image()
       img.src = '/skin/hitcircleoverlay.png'
       img.onload = () => setImage(img)
 
-      const backgroundEvent = beatmap.events.find((event) =>
-        event.startsWith('0,0,'),
-      )
+      const backgroundEvent = (gc?.beatmap as any)?.findBackgroundEvent?.()
 
       if (backgroundEvent) {
         const parts = backgroundEvent.split(',')
@@ -182,6 +258,13 @@ function App() {
       setSelectedDifficulty(difficultyVersion)
       setShowDifficultySelect(false)
 
+      // Ensure only one audio is playing at once
+      if (AudioController._active) {
+        AudioController._active.destroy?.()
+        AudioController._active = null
+      }
+      gc?.audioController?.destroy?.()
+
       setGc(undefined)
       setImage(null)
       setBackgroundImage(null)
@@ -195,16 +278,16 @@ function App() {
         return
       }
 
-      const gc = new GameController(selectedBeatmap, audioFile)
-      setGc(gc)
+      const audioController = new AudioController(audioFile)
+      AudioController._active = audioController
+      const newGc = new GameController(selectedBeatmap, audioController)
+      setGc(newGc)
 
       const img = new window.Image()
       img.src = '/skin/hitcircleoverlay.png'
       img.onload = () => setImage(img)
 
-      const backgroundEvent = selectedBeatmap.events.find((event) =>
-        event.startsWith('0,0,'),
-      )
+      const backgroundEvent = (gc?.beatmap as any)?.findBackgroundEvent?.()
 
       if (backgroundEvent) {
         const parts = backgroundEvent.split(',')
@@ -277,28 +360,41 @@ function App() {
     const scaleX = canvas.current.width / 512
     const scaleY = canvas.current.height / 384
 
-    const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
+    const cs = gc.beatmap.difficulty.circleSize ?? 5
     const circleRadius = 54.4 - 4.48 * cs
     const circleSize = circleRadius * 2 * Math.min(scaleX, scaleY)
 
     const currentTime = await gc.audioController.getTime()
     const currentTimeMs = currentTime * 1000
-    const sliderMultiplier =
-      parseFloat(gc.beatmap.difficulty.sliderMultiplier) || 1.4
+    const sliderMultiplier = gc.beatmap.difficulty.sliderMultiplier ?? 1.4
 
     sliders?.forEach((slider, index) => {
-      if (!slider.shouldRender) {
+      const {
+        sliderAny,
+        slides,
+        length,
+        startTime: sliderStartTime,
+        startPosition,
+      } = getSliderRuntime(slider)
+
+      if (sliderAny.shouldRender === undefined) {
+        sliderAny.shouldRender = true
+      }
+
+      if (!sliderAny.shouldRender) {
         return
       }
 
-      const sliderAny = slider as any
       if (sliderAny.userProgress === undefined) sliderAny.userProgress = 0
       if (sliderAny.isActive === undefined) sliderAny.isActive = false
 
-      const beatLength = gc.getBeatLengthAt(slider.time)
+      const beatLength = gc.getBeatLengthAt(sliderStartTime)
       const pixelsPerBeat = sliderMultiplier * 100
-      const slideDuration = (slider.params.length / pixelsPerBeat) * beatLength
-      const endTime = slider.time + slideDuration * slider.params.slides
+      const slideDuration = (length / pixelsPerBeat) * beatLength
+      const totalSlides = Math.max(1, slides)
+      const safeSlideDuration = slideDuration > 0 ? slideDuration : 1
+      const totalDuration = safeSlideDuration * totalSlides
+      const endTime = sliderStartTime + totalDuration
       const fadeOutTime = 100
       const timeSinceEnd = currentTimeMs - endTime
       const alpha =
@@ -314,11 +410,8 @@ function App() {
         beatLength,
       )
 
-      if (
-        currentTimeMs > endTime ||
-        sliderAny.userProgress >= slideDuration * slider.params.slides
-      ) {
-        slider.shouldRender = false
+      if (currentTimeMs > endTime || sliderAny.userProgress >= totalDuration) {
+        sliderAny.shouldRender = false
         return
       }
 
@@ -327,13 +420,12 @@ function App() {
 
         const sliderProgress = Math.max(
           0,
-          (currentTimeMs - slider.time) /
-            (slideDuration * slider.params.slides),
+          (currentTimeMs - sliderStartTime) / (safeSlideDuration * totalSlides),
         )
         const totalPathLength = sliderPath.points.length - 1
 
-        const currentRepeat = Math.floor(sliderProgress * slider.params.slides)
-        const repeatProgress = (sliderProgress * slider.params.slides) % 1
+        const currentRepeat = Math.floor(sliderProgress * totalSlides)
+        const repeatProgress = (sliderProgress * totalSlides) % 1
         const isReverse = currentRepeat % 2 === 1
 
         let pathProgress = isReverse ? 1 - repeatProgress : repeatProgress
@@ -367,73 +459,65 @@ function App() {
         context.lineCap = 'round'
         context.lineJoin = 'round'
 
-        if (currentTimeMs < slider.time) {
+        if (currentTimeMs < sliderStartTime) {
           context.moveTo(firstPoint.x * scaleX, firstPoint.y * scaleY)
           for (let i = 1; i < sliderPath.points.length; i++) {
             const point = sliderPath.points[i]
             context.lineTo(point.x * scaleX, point.y * scaleY)
           }
-        } else {
-          if (isReverse) {
-            if (completedPoints > 0 || segmentProgress > 0) {
-              context.moveTo(firstPoint.x * scaleX, firstPoint.y * scaleY)
+        } else if (isReverse) {
+          if (completedPoints > 0 || segmentProgress > 0) {
+            context.moveTo(firstPoint.x * scaleX, firstPoint.y * scaleY)
 
-              for (
-                let i = 1;
-                i <= completedPoints && i < sliderPath.points.length;
-                i++
-              ) {
-                const point = sliderPath.points[i]
-                context.lineTo(point.x * scaleX, point.y * scaleY)
-              }
+            for (
+              let i = 1;
+              i <= completedPoints && i < sliderPath.points.length;
+              i++
+            ) {
+              const point = sliderPath.points[i]
+              context.lineTo(point.x * scaleX, point.y * scaleY)
+            }
 
-              if (
-                segmentProgress > 0 &&
-                completedPoints < sliderPath.points.length - 1
-              ) {
-                const currentPoint = sliderPath.points[completedPoints]
-                const nextPoint = sliderPath.points[completedPoints + 1]
-                const interpX =
-                  currentPoint.x +
-                  (nextPoint.x - currentPoint.x) * segmentProgress
-                const interpY =
-                  currentPoint.y +
-                  (nextPoint.y - currentPoint.y) * segmentProgress
-                context.lineTo(interpX * scaleX, interpY * scaleY)
-              }
+            if (
+              segmentProgress > 0 &&
+              completedPoints < sliderPath.points.length - 1
+            ) {
+              const currentPoint = sliderPath.points[completedPoints]
+              const nextPoint = sliderPath.points[completedPoints + 1]
+              const interpX =
+                currentPoint.x +
+                (nextPoint.x - currentPoint.x) * segmentProgress
+              const interpY =
+                currentPoint.y +
+                (nextPoint.y - currentPoint.y) * segmentProgress
+              context.lineTo(interpX * scaleX, interpY * scaleY)
+            }
+          }
+        } else if (completedPoints < sliderPath.points.length - 1) {
+          let startPoint
+          if (
+            segmentProgress > 0 &&
+            completedPoints < sliderPath.points.length - 1
+          ) {
+            const currentPoint = sliderPath.points[completedPoints]
+            const nextPoint = sliderPath.points[completedPoints + 1]
+            startPoint = {
+              x:
+                currentPoint.x +
+                (nextPoint.x - currentPoint.x) * segmentProgress,
+              y:
+                currentPoint.y +
+                (nextPoint.y - currentPoint.y) * segmentProgress,
             }
           } else {
-            if (completedPoints < sliderPath.points.length - 1) {
-              let startPoint
-              if (
-                segmentProgress > 0 &&
-                completedPoints < sliderPath.points.length - 1
-              ) {
-                const currentPoint = sliderPath.points[completedPoints]
-                const nextPoint = sliderPath.points[completedPoints + 1]
-                startPoint = {
-                  x:
-                    currentPoint.x +
-                    (nextPoint.x - currentPoint.x) * segmentProgress,
-                  y:
-                    currentPoint.y +
-                    (nextPoint.y - currentPoint.y) * segmentProgress,
-                }
-              } else {
-                startPoint = sliderPath.points[completedPoints]
-              }
+            startPoint = sliderPath.points[completedPoints]
+          }
 
-              context.moveTo(startPoint.x * scaleX, startPoint.y * scaleY)
+          context.moveTo(startPoint.x * scaleX, startPoint.y * scaleY)
 
-              for (
-                let i = completedPoints + 1;
-                i < sliderPath.points.length;
-                i++
-              ) {
-                const point = sliderPath.points[i]
-                context.lineTo(point.x * scaleX, point.y * scaleY)
-              }
-            }
+          for (let i = completedPoints + 1; i < sliderPath.points.length; i++) {
+            const point = sliderPath.points[i]
+            context.lineTo(point.x * scaleX, point.y * scaleY)
           }
         }
 
@@ -443,16 +527,16 @@ function App() {
         context.globalAlpha = 1
       }
 
-      const scaledX = slider.x * scaleX
-      const scaledY = slider.y * scaleY
+      const scaledX = startPosition.x * scaleX
+      const scaledY = startPosition.y * scaleY
 
-      const timeSinceAppear = currentTimeMs - (slider.time - preemptTime)
+      const timeSinceAppear = currentTimeMs - (sliderStartTime - preemptTime)
       const approachProgress = Math.max(
         0,
         Math.min(1, timeSinceAppear / preemptTime),
       )
 
-      if (currentTimeMs < slider.time) {
+      if (currentTimeMs < sliderStartTime) {
         const approachCircleScale = 2 - 1 * approachProgress
         const approachRadius = (circleSize / 2) * approachCircleScale
 
@@ -543,33 +627,39 @@ function App() {
     })
 
     spinners?.forEach((spinner) => {
-      if (!spinner.shouldRender) {
+      const {
+        spinnerAny,
+        startTime: spinnerStartTime,
+        endTime: spinnerEndTime,
+        position,
+      } = getSpinnerRuntime(spinner)
+
+      if (spinnerAny.shouldRender === undefined) {
+        spinnerAny.shouldRender = true
+      }
+
+      if (!spinnerAny.shouldRender) {
         return
       }
 
-      const scaledX = spinner.x * scaleX
-      const scaledY = spinner.y * scaleY
+      const scaledX = position.x * scaleX
+      const scaledY = position.y * scaleY
 
+      const duration = Math.max(1, spinnerEndTime - spinnerStartTime)
       const progress = Math.max(
         0,
-        Math.min(
-          1,
-          (currentTimeMs - spinner.time) /
-            (spinner.params.endTime - spinner.time),
-        ),
+        Math.min(1, (currentTimeMs - spinnerStartTime) / duration),
       )
 
-      const spinnerAny = spinner as any
       if (spinnerAny.rotation === undefined) spinnerAny.rotation = 0
 
       if (spinnerAny.spinsRequired === undefined) {
-        const duration = spinner.params.endTime - spinner.time
         spinnerAny.spinsRequired = Math.max(3, Math.floor(duration / 500))
       }
 
       if (spinnerAny.spinsCompleted === undefined) spinnerAny.spinsCompleted = 0
 
-      let outerRadius = 300 * (1 - progress)
+      const outerRadius = 300 * (1 - progress)
 
       context.strokeStyle = '#FFFFFF'
       context.lineWidth = 3
@@ -579,26 +669,35 @@ function App() {
     })
 
     circles?.forEach((circle, index) => {
-      if (!circle.shouldRender) {
+      const {
+        circleAny,
+        startTime: circleStartTime,
+        position,
+      } = getCircleRuntime(circle)
+
+      if (circleAny.shouldRender === undefined) {
+        circleAny.shouldRender = true
+      }
+
+      if (!circleAny.shouldRender) {
         return
       }
 
-      const scaledX = circle.x * scaleX
-      const scaledY = circle.y * scaleY
+      const scaledX = position.x * scaleX
+      const scaledY = position.y * scaleY
 
       const fadeOutTime = 100
-      const timeSinceHit = currentTimeMs - circle.time
+      const timeSinceHit = currentTimeMs - circleStartTime
       const alpha =
         timeSinceHit > 0 ? Math.max(0, 1 - timeSinceHit / fadeOutTime) : 1
 
-      const preemptTime = 600
-      const timeSinceAppear = currentTimeMs - (circle.time - preemptTime)
+      const timeSinceAppear = currentTimeMs - (circleStartTime - preemptTime)
       const approachProgress = Math.max(
         0,
         Math.min(1, timeSinceAppear / preemptTime),
       )
 
-      if (currentTimeMs < circle.time && image) {
+      if (currentTimeMs < circleStartTime && image) {
         const approachCircleScale = 2 - 1 * approachProgress
         const approachRadius = (circleSize / 2) * approachCircleScale
 
@@ -671,25 +770,39 @@ function App() {
 
     const currentTime = await gc.audioController.getTime()
     const currentTimeMs = currentTime * 1000
-    const sliderMultiplier =
-      parseFloat(gc.beatmap.difficulty.sliderMultiplier) || 1.4
+    const sliderMultiplier = gc.beatmap.difficulty.sliderMultiplier ?? 1.4
 
     // Handle spinner spinning logic
     spinners?.forEach((spinner) => {
-      if (!spinner.shouldRender) {
+      const {
+        spinnerAny,
+        startTime: spinnerStartTime,
+        endTime: spinnerEndTime,
+        position,
+      } = getSpinnerRuntime(spinner)
+
+      if (spinnerAny.shouldRender === undefined) {
+        spinnerAny.shouldRender = true
+      }
+
+      if (!spinnerAny.shouldRender) {
         return
       }
 
-      const spinnerAny = spinner as any
+      const spinnerDuration = Math.max(1, spinnerEndTime - spinnerStartTime)
+
       if (spinnerAny.rotation === undefined) spinnerAny.rotation = 0
       if (spinnerAny.spinsRequired === undefined) {
-        const duration = spinner.params.endTime - spinner.time
-        spinnerAny.spinsRequired = Math.max(3, Math.floor(duration / 500))
+        spinnerAny.spinsRequired = Math.max(
+          3,
+          Math.floor(spinnerDuration / 500),
+        )
       }
       if (spinnerAny.spinsCompleted === undefined) spinnerAny.spinsCompleted = 0
       if (spinnerAny.lastMouseAngle === undefined) spinnerAny.lastMouseAngle = 0
-      if (spinnerAny.lastRotationTime === undefined)
+      if (spinnerAny.lastRotationTime === undefined) {
         spinnerAny.lastRotationTime = currentTimeMs
+      }
 
       const [mouseX, mouseY] = [inputHandler.mouseX, inputHandler.mouseY]
       const canvasRect = canvas.current?.getBoundingClientRect()
@@ -711,8 +824,8 @@ function App() {
       const adjustedX = (canvasX - offsetX) / zoomFactor
       const adjustedY = (canvasY - offsetY) / zoomFactor
 
-      const spinnerX = spinner.x * scaleX
-      const spinnerY = spinner.y * scaleY
+      const spinnerX = position.x * scaleX
+      const spinnerY = position.y * scaleY
 
       // Calculate angle from spinner center to mouse
       const dx = adjustedX - spinnerX
@@ -726,8 +839,8 @@ function App() {
       if (
         InputHandler._active?.isMouseDown &&
         isInRange &&
-        currentTimeMs >= spinner.time &&
-        currentTimeMs <= spinner.params.endTime
+        currentTimeMs >= spinnerStartTime &&
+        currentTimeMs <= spinnerEndTime
       ) {
         // Calculate angular difference
         let angleDiff = currentMouseAngle - spinnerAny.lastMouseAngle
@@ -740,7 +853,6 @@ function App() {
         if (Math.abs(angleDiff) > 0.05) {
           spinnerAny.rotation += angleDiff
 
-          // Calculate rotation speed
           const timeDiff = currentTimeMs - spinnerAny.lastRotationTime
           if (timeDiff > 0) {
             spinnerAny.rotationSpeed = Math.abs(angleDiff) / (timeDiff / 1000)
@@ -774,17 +886,14 @@ function App() {
         spinnerAny.lastMouseAngle = currentMouseAngle
       }
 
-      // Check if spinner is completed
-      if (currentTimeMs > spinner.params.endTime) {
-        if (spinner.shouldRender) {
-          // Award points based on completion
+      if (currentTimeMs > spinnerEndTime) {
+        if (spinnerAny.shouldRender) {
           const completionRatio = Math.min(
             1,
             spinnerAny.spinsCompleted / spinnerAny.spinsRequired,
           )
 
           if (completionRatio === 0) {
-            // If no spins were completed, it's a miss
             console.log('spinner miss!')
             setCombo(0)
           } else {
@@ -793,32 +902,49 @@ function App() {
             setCombo((prev) => prev + 1)
           }
         }
-        spinner.shouldRender = false
+        spinnerAny.shouldRender = false
       }
     })
 
     sliders?.forEach((slider) => {
-      if (!slider.shouldRender) {
+      const {
+        sliderAny,
+        slides,
+        length,
+        startTime: sliderStartTime,
+      } = getSliderRuntime(slider)
+
+      if (sliderAny.shouldRender === undefined) {
+        sliderAny.shouldRender = true
+      }
+
+      if (!sliderAny.shouldRender) {
         return
       }
 
-      const sliderAny = slider as any
       if (sliderAny.userProgress === undefined) sliderAny.userProgress = 0
       if (sliderAny.isActive === undefined) sliderAny.isActive = false
       if (sliderAny.hasStarted === undefined) sliderAny.hasStarted = false
+      if (sliderAny.shouldPlayHitSound === undefined)
+        sliderAny.shouldPlayHitSound = true
 
-      const beatLength = gc.getBeatLengthAt(slider.time)
+      const beatLength = gc.getBeatLengthAt(sliderStartTime)
       const pixelsPerBeat = sliderMultiplier * 100
-      const slideDuration = (slider.params.length / pixelsPerBeat) * beatLength
-      const endTime = slider.time + slideDuration * slider.params.slides
+      const slideDuration = (length / pixelsPerBeat) * beatLength
+      const totalSlides = Math.max(1, slides)
+      const safeSlideDuration = slideDuration > 0 ? slideDuration : 1
+      const totalDuration = safeSlideDuration * totalSlides
+      const endTime = sliderStartTime + totalDuration
 
-      // Check for slider miss - if we're past the hit window and haven't started tracking
-      const hitWindow = 150 // ms after slider time to consider it a miss
-      if (currentTimeMs > slider.time + hitWindow && !sliderAny.hasStarted) {
-        if (slider.shouldRender) {
+      const hitWindow = 150
+      if (
+        currentTimeMs > sliderStartTime + hitWindow &&
+        !sliderAny.hasStarted
+      ) {
+        if (sliderAny.shouldRender) {
           console.log('slider miss!')
-          setCombo(0) // Reset combo on miss
-          slider.shouldRender = false
+          setCombo(0)
+          sliderAny.shouldRender = false
         }
         return
       }
@@ -840,46 +966,42 @@ function App() {
       if (
         InputHandler._active?.shouldHit &&
         ballPosition &&
-        currentTimeMs >= slider.time &&
+        currentTimeMs >= sliderStartTime &&
         currentTimeMs <= endTime
       ) {
         InputHandler._active.shouldHit = false
         const dx = osuPixelsX - ballPosition.x
         const dy = osuPixelsY - ballPosition.y
-        const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
+        const cs = gc.beatmap.difficulty.circleSize ?? 5
         const circleRadius = 54.4 - 4.48 * cs
 
-        if (slider.shouldPlayHitSound) {
+        if (sliderAny.shouldPlayHitSound) {
           AudioController._active?.playHitSound()
-
-          slider.shouldPlayHitSound = false
+          sliderAny.shouldPlayHitSound = false
         }
 
         if (dx * dx + dy * dy <= circleRadius * circleRadius) {
           sliderAny.isActive = true
-          sliderAny.hasStarted = true // Mark that the slider has been started
+          sliderAny.hasStarted = true
         }
       }
 
       if (sliderAny.isActive && ballPosition) {
         const dx = osuPixelsX - ballPosition.x
         const dy = osuPixelsY - ballPosition.y
-        const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
+        const cs = gc.beatmap.difficulty.circleSize ?? 5
         const circleRadius = 54.4 - 4.48 * cs
 
         const trackingRadius = circleRadius * 2
         if (dx * dx + dy * dy <= trackingRadius * trackingRadius) {
-          sliderAny.userProgress = currentTimeMs - slider.time
+          sliderAny.userProgress = currentTimeMs - sliderStartTime
         } else {
           sliderAny.isActive = false
         }
       }
 
-      if (
-        currentTimeMs > endTime ||
-        sliderAny.userProgress >= slideDuration * slider.params.slides
-      ) {
-        if (slider.shouldRender) {
+      if (currentTimeMs > endTime || sliderAny.userProgress >= totalDuration) {
+        if (sliderAny.shouldRender) {
           if (sliderAny.isActive && sliderAny.hasStarted) {
             setScore((prev) => prev + 300)
             setCombo((prev) => prev + 1)
@@ -888,13 +1010,22 @@ function App() {
             setCombo(0)
           }
         }
-        slider.shouldRender = false
-        return
+        sliderAny.shouldRender = false
       }
     })
 
     circles?.forEach((circle) => {
-      if (!circle.shouldRender) {
+      const {
+        circleAny,
+        startTime: circleStartTime,
+        position,
+      } = getCircleRuntime(circle)
+
+      if (circleAny.shouldRender === undefined) {
+        circleAny.shouldRender = true
+      }
+
+      if (!circleAny.shouldRender) {
         return
       }
 
@@ -903,11 +1034,11 @@ function App() {
       const osuPixelsX = Math.floor(mouseX / (window.innerWidth / 512))
       const osuPixelsY = Math.floor(mouseY / (window.innerHeight / 384))
 
-      if (currentTimeMs > circle.time) {
-        if (circle.shouldRender) {
+      if (currentTimeMs > circleStartTime) {
+        if (circleAny.shouldRender) {
           console.log('miss!')
           setCombo(0)
-          circle.shouldRender = false
+          circleAny.shouldRender = false
         }
         return
       }
@@ -917,9 +1048,9 @@ function App() {
 
         console.log('click!')
 
-        const dx = osuPixelsX - circle.x
-        const dy = osuPixelsY - circle.y
-        const cs = parseFloat(gc.beatmap.difficulty.circleSize) || 5
+        const dx = osuPixelsX - position.x
+        const dy = osuPixelsY - position.y
+        const cs = gc.beatmap.difficulty.circleSize ?? 5
         const circleRadius = 54.4 - 4.48 * cs
 
         if (dx * dx + dy * dy <= circleRadius * circleRadius) {
@@ -927,11 +1058,11 @@ function App() {
 
           AudioController._active?.playHitSound()
 
-          const newScore = score + 300 * (1 + combo) // unfinished calculation
+          const newScore = score + 300 * (1 + combo)
           setCombo((prev) => prev + 1)
           setScore(newScore)
 
-          circle.shouldRender = false
+          circleAny.shouldRender = false
           return
         }
       }

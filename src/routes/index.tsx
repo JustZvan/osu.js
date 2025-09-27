@@ -254,17 +254,15 @@ function RouteComponent() {
       setNextBgIndex(nextIndex)
       setIsFading(true)
 
-      // After fade out completes, switch to next background and fade in
       setTimeout(() => {
         setBgIndex(nextIndex)
         setIsFading(false)
-      }, 500) // Half of the transition duration
+      }, 500)
     }
   }, 20000)
 
   useEffect(() => {
     if (!showIntro) {
-      // Clean up audio context and animation
       if (audioCtxRef.current) {
         audioCtxRef.current.close()
         audioCtxRef.current = null
@@ -275,16 +273,16 @@ function RouteComponent() {
       analyserRef.current = null
       return
     }
-    // Only run when intro is shown
+
     let running = true
     let lastBounce = 1
     let lastPeak = 0
     let beatCooldown = 0
-    const MIN_BEAT_INTERVAL = 200 // ms
+    const MIN_BEAT_INTERVAL = 200
 
     const setupAudio = () => {
       if (!audioRef.current) return
-      if (audioCtxRef.current) return // already setup
+      if (audioCtxRef.current) return
       const ctx = new (window.AudioContext ||
         (window as any).webkitAudioContext)()
       audioCtxRef.current = ctx
@@ -303,7 +301,7 @@ function RouteComponent() {
       const analyser = analyserRef.current
       const data = new Uint8Array(analyser.frequencyBinCount)
       analyser.getByteFrequencyData(data)
-      // Simple beat detection: look at low frequencies
+
       const bass = data.slice(0, 32)
       const avgBass = bass.reduce((a, b) => a + b, 0) / bass.length
       const now = performance.now()
@@ -409,7 +407,7 @@ function RouteComponent() {
           <img
             src={logo}
             alt="Logo"
-            className="drop-shadow-xl h-full"
+            className={`drop-shadow-xl h-full`}
             style={{
               transform: `scale(${bounce})`,
               transition:
@@ -552,7 +550,7 @@ function RouteComponent() {
                   No saved beatmaps yet. Add some from the library!
                 </div>
               ) : (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 overflow-scroll h-1/2 overflow-x-hidden">
                   {savedBeatmaps.savedBeatmaps.map((b) => (
                     <div key={b.id} className="flex flex-col gap-2">
                       <button
