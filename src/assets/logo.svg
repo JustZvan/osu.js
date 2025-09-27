@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 457.11 457.11">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: none;
+        stroke: #bdae16;
+        stroke-width: 2px;
+      }
+
+      .cls-1, .cls-2 {
+        stroke-miterlimit: 10;
+      }
+
+      .cls-3 {
+        fill: #231f20;
+        font-family: HelveticaNeue-Bold, 'Helvetica Neue';
+        font-size: 150px;
+        font-weight: 700;
+      }
+
+      .cls-2 {
+        fill: #f6df17;
+        stroke: #fff;
+        stroke-width: 10px;
+      }
+    </style>
+  </defs>
+  <circle class="cls-2" cx="228.56" cy="228.56" r="223.56"/>
+  <polygon class="cls-1" points="154.18 30.54 113.12 101.65 195.23 101.65 154.18 30.54"/>
+  <polygon class="cls-1" points="305.51 197.92 240.61 310.34 370.41 310.34 305.51 197.92"/>
+  <polygon class="cls-1" points="96.35 87.71 31.45 200.12 161.26 200.12 96.35 87.71"/>
+  <polygon class="cls-1" points="388.37 147.98 347.31 219.1 429.42 219.1 388.37 147.98"/>
+  <polygon class="cls-1" points="79.66 246.5 38.6 317.61 120.71 317.61 79.66 246.5"/>
+  <polygon class="cls-1" points="187.72 302.34 122.82 414.75 252.62 414.75 187.72 302.34"/>
+  <polygon class="cls-1" points="228.56 82.35 181.05 164.63 276.06 164.63 228.56 82.35"/>
+  <text class="cls-3" transform="translate(65.96 276.56)"><tspan x="0" y="0">OSU</tspan></text>
+  <polygon class="cls-1" points="321.07 320.19 280.01 391.3 362.13 391.3 321.07 320.19"/>
+  <polygon class="cls-1" points="334.98 63.75 293.92 134.86 376.04 134.86 334.98 63.75"/>
+</svg>

@@ -1,49 +1,699 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
-import logoUrl from '@/assets/logomark.png'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import logo from '@/assets/logo.svg'
+import { useState, useEffect, useMemo, useRef, type JSX } from 'react'
+
+import { getStarDifficultyColor } from '@/lib/osu/ui/color-calc'
+
+import { FaGithub } from 'react-icons/fa'
+
+import cogIcon from '@/assets/icons/cog_solid.svg'
+
+function dimColor(hexColor: string, factor: number = 0.4): string {
+  const hex = hexColor.replace('#', '')
+
+  const r = parseInt(hex.substr(0, 2), 16)
+  const g = parseInt(hex.substr(2, 2), 16)
+  const b = parseInt(hex.substr(4, 2), 16)
+
+  const dimmedR = Math.round(r * factor)
+  const dimmedG = Math.round(g * factor)
+  const dimmedB = Math.round(b * factor)
+
+  const toHex = (n: number) => n.toString(16).padStart(2, '0')
+  return `#${toHex(dimmedR)}${toHex(dimmedG)}${toHex(dimmedB)}`
+}
+
+import {
+  MdAdd,
+  MdOutlineLibraryMusic,
+  MdPause,
+  MdPlayArrow,
+} from 'react-icons/md'
+
+import { OsuDirectBeatmapProvider } from '@/lib/osu/mirrors/osudirect'
+import { BeatmapInfo } from '@/lib/osu/mirrors/provider'
+import { useSavedBeatmaps } from '@/lib/hooks/useStorage'
+import { useSeasonalBackgrounds } from '@/lib/osu/ui/backgrounds'
+import { useEvents } from '@/lib/osu/ui/events'
+import useInterval from '@/lib/hooks/useInterval'
 
 export const Route = createFileRoute('/')({
   component: RouteComponent,
 })
 
-function RouteComponent() {
+function BeatmapCard({ beatmap }: { beatmap: BeatmapInfo }) {
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const savedBeatmaps = useSavedBeatmaps()
+
   return (
-    <main className="min-h-screen bg-gradient-to-b from-black via-zinc-900 to-black text-white">
-      <section className="mx-auto flex max-w-5xl flex-col items-center gap-8 px-6 py-20 text-center sm:py-28">
-        <img
-          src={logoUrl}
-          alt="osu.js logo"
-          className="h-32 w-32 rounded-lg shadow-2xl ring-1 ring-white/10 sm:h-40 sm:w-40"
+    <div
+      key={beatmap.id}
+      className="rounded-xl max-h-24 overflow-clip flex gap-2 shadow hover:bg-zinc-700 transition relative"
+    >
+      <img
+        src={beatmap.cardCover}
+        alt=""
+        className="h-full w-full absolute object-cover"
+      />
+
+      <div className="flex bg-zinc-700/90 w-full h-full z-10">
+        <div className="relative w-24 h-24">
+          <img
+            src={beatmap.listCover}
+            alt=""
+            className="h-24 w-24 absolute -z-10"
+          />
+
+          <div className="absolute inset-0 flex items-center justify-center z-20">
+            <button
+              className="bg-black/70 hover:opacity-100 opacity-0 h-full w-full hover:flex items-center justify-center"
+              onClick={(e) => {
+                e.stopPropagation()
+                const audio = audioRef.current
+                if (audio) {
+                  if (audio.paused) {
+                    audio.currentTime = 0
+                    audio.play()
+                  } else {
+                    audio.pause()
+                  }
+                }
+              }}
+            >
+              {audioRef.current?.paused ? (
+                <MdPlayArrow className="text-3xl" />
+              ) : (
+                <MdPause className="text-3xl" />
+              )}
+            </button>
+          </div>
+
+          <audio
+            ref={audioRef}
+            src={beatmap.previewUrl}
+            autoPlay={false}
+            className="h-24 w-24"
+          ></audio>
+        </div>
+
+        <div className="flex flex-col leading-none p-2">
+          <div className="text-xl font-bold">{beatmap.title}</div>
+
+          <div className="text-md">by {beatmap.artist}</div>
+
+          <div className="text-xs text-zinc-300">
+            mapped by {beatmap.mapper}
+          </div>
+        </div>
+
+        <div className="h-full absolute right-0 flex items-center">
+          <button
+            className="hover:text-zinc-500"
+            onClick={() => {
+              savedBeatmaps.toggleBeatmap(beatmap)
+            }}
+          >
+            <MdAdd className="text-3xl" />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function BeatmapBrowser() {
+  const beatmapProvider = useMemo(() => new OsuDirectBeatmapProvider(), [])
+  const [results, setResults] = useState<BeatmapInfo[]>([])
+
+  return (
+    <div
+      className={`absolute left-0 top-0 w-full h-full z-30 bg-black/60 flex`}
+    >
+      <div className="flex w-full h-full justify-center px-48">
+        <div className="flex flex-col w-full">
+          <div className="min-h-20 bg-gray-800 flex items-center text-3xl px-24 w-full gap-6">
+            <MdOutlineLibraryMusic className="text-5xl" />
+            <div>beatmap listing</div>
+          </div>
+
+          <div className="min-h-48 bg-zinc-900 px-16 flex items-center justify-center">
+            <input
+              type="text"
+              className="w-full px-4 h-14 bg-zinc-800 rounded-lg"
+              placeholder="type in keywords..."
+              onChange={async (e) => {
+                const query = e.target.value
+
+                const beatmaps = await beatmapProvider.searchBeatmaps(query)
+                setResults(beatmaps)
+              }}
+            />
+          </div>
+
+          <div className="max-h-full h-full bg-zinc-900 overflow-y-auto overflow-x-hidden">
+            <div className="p-8 grid grid-cols-4 gap-6 items-center">
+              {results.length === 0 ? (
+                <div className="text-zinc-400 col-span-4 text-center">
+                  No beatmaps found.
+                </div>
+              ) : (
+                results.map((beatmap) => (
+                  <BeatmapCard key={beatmap.id} beatmap={beatmap} />
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RouteComponent() {
+  const [currentTime, setCurrentTime] = useState(0)
+  const [showLibrary, setShowLibrary] = useState(false)
+  const savedBeatmaps = useSavedBeatmaps()
+
+  const [selectedCard, setSelectedCard] = useState<BeatmapInfo | null>(null)
+  const [selectedSubmapId, setSelectedSubmapId] = useState<number | null>(null)
+
+  const [showPreIntro, setShowPreIntro] = useState(true)
+  const [showIntro, setShowIntro] = useState(false)
+  const [audioLoaded, setAudioLoaded] = useState(false)
+  const audioUrl = '/circles.mp3'
+  const audioRef = useRef<HTMLAudioElement>(null)
+
+  const [bounce, setBounce] = useState(1)
+  const animationFrameRef = useRef<number>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const events = useEvents()
+
+  const [eventIndex, setEventIndex] = useState(0)
+
+  useEffect(() => {
+    if (savedBeatmaps.savedBeatmaps.length > 0) {
+      const randomBeatmap =
+        savedBeatmaps.savedBeatmaps[
+          Math.floor(Math.random() * savedBeatmaps.savedBeatmaps.length)
+        ]
+      setSelectedCard(randomBeatmap)
+      if (
+        Array.isArray(randomBeatmap.submaps) &&
+        randomBeatmap.submaps.length > 0
+      ) {
+        const randomSubmap =
+          randomBeatmap.submaps[
+            Math.floor(Math.random() * randomBeatmap.submaps.length)
+          ]
+        setSelectedSubmapId(randomSubmap.id)
+      }
+    }
+  }, [savedBeatmaps.savedBeatmaps.length])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now())
+    }, 10)
+    return () => clearInterval(interval)
+  }, [])
+
+  const [settingsShown, setSettingsShown] = useState(false)
+  const navigate = useNavigate()
+  const { backgrounds } = useSeasonalBackgrounds()
+
+  const [bgIndex, setBgIndex] = useState(0)
+  const [nextBgIndex, setNextBgIndex] = useState(0)
+  const [isFading, setIsFading] = useState(false)
+
+  useInterval(() => {
+    if (events && events.images.length > 0) {
+      setEventIndex((prev) => (prev + 1) % events.images.length)
+    }
+  }, 10000)
+
+  useInterval(() => {
+    if (backgrounds && backgrounds.length > 0) {
+      const nextIndex = (bgIndex + 1) % backgrounds.length
+      setNextBgIndex(nextIndex)
+      setIsFading(true)
+
+      // After fade out completes, switch to next background and fade in
+      setTimeout(() => {
+        setBgIndex(nextIndex)
+        setIsFading(false)
+      }, 500) // Half of the transition duration
+    }
+  }, 20000)
+
+  useEffect(() => {
+    if (!showIntro) {
+      // Clean up audio context and animation
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close()
+        audioCtxRef.current = null
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+      analyserRef.current = null
+      return
+    }
+    // Only run when intro is shown
+    let running = true
+    let lastBounce = 1
+    let lastPeak = 0
+    let beatCooldown = 0
+    const MIN_BEAT_INTERVAL = 200 // ms
+
+    const setupAudio = () => {
+      if (!audioRef.current) return
+      if (audioCtxRef.current) return // already setup
+      const ctx = new (window.AudioContext ||
+        (window as any).webkitAudioContext)()
+      audioCtxRef.current = ctx
+      const src = ctx.createMediaElementSource(audioRef.current)
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 1024
+      src.connect(analyser)
+      analyser.connect(ctx.destination)
+      analyserRef.current = analyser
+    }
+
+    setupAudio()
+
+    const animate = () => {
+      if (!running || !analyserRef.current) return
+      const analyser = analyserRef.current
+      const data = new Uint8Array(analyser.frequencyBinCount)
+      analyser.getByteFrequencyData(data)
+      // Simple beat detection: look at low frequencies
+      const bass = data.slice(0, 32)
+      const avgBass = bass.reduce((a, b) => a + b, 0) / bass.length
+      const now = performance.now()
+      if (avgBass > 180 && now - lastPeak > MIN_BEAT_INTERVAL) {
+        lastPeak = now
+        lastBounce = 1.1
+        setBounce(1.1)
+        beatCooldown = 6
+      } else if (beatCooldown > 0) {
+        beatCooldown--
+      } else {
+        lastBounce = Math.max(1, lastBounce - 0.04)
+        setBounce(lastBounce)
+      }
+      animationFrameRef.current = requestAnimationFrame(animate)
+    }
+    animationFrameRef.current = requestAnimationFrame(animate)
+    return () => {
+      running = false
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close()
+        audioCtxRef.current = null
+      }
+      analyserRef.current = null
+    }
+  }, [showIntro])
+
+  let content: JSX.Element
+
+  if (showPreIntro) {
+    content = (
+      <main className="torus-pro-normal ui-cursor overflow-hidden h-screen w-screen flex items-center justify-center bg-black">
+        <audio
+          ref={audioRef}
+          src={audioUrl}
+          preload="auto"
+          loop
+          onCanPlayThrough={() => setAudioLoaded(true)}
+          style={{ display: 'none' }}
+        />
+        <button
+          className="flex flex-col items-center justify-center h-full w-full"
+          style={{
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+          onClick={() => {
+            if (audioRef.current && audioLoaded) {
+              audioRef.current.play()
+              setShowPreIntro(false)
+              setShowIntro(true)
+            }
+          }}
+          disabled={!audioLoaded}
+        >
+          <span className="text-3xl text-white mb-4">
+            {audioLoaded ? (
+              <div>
+                <div>click anywhere to begin</div>
+                <div className="text-xs text-zinc-400">
+                  note this will play audio
+                </div>
+              </div>
+            ) : (
+              <div>loading...</div>
+            )}
+          </span>
+        </button>
+      </main>
+    )
+  } else if (showIntro) {
+    content = (
+      <main className="torus-pro-normal ui-cursor overflow-hidden h-screen w-screen flex items-center justify-center p-48 relative">
+        <div
+          className="absolute inset-0 bg-cover bg-center transition-opacity duration-1000"
+          style={{
+            backgroundImage: `url(${backgrounds[bgIndex]?.url})`,
+            opacity: isFading ? 0 : 1,
+          }}
+        />
+        <div
+          className="absolute inset-0 bg-cover bg-center transition-opacity duration-1000"
+          style={{
+            backgroundImage: `url(${backgrounds[nextBgIndex]?.url})`,
+            opacity: isFading ? 1 : 0,
+          }}
         />
 
-        <div className="space-y-4">
-          <h1 className="text-4xl font-extrabold tracking-tight sm:text-6xl">
-            osu.js
-          </h1>
-          <p className="mx-auto max-w-2xl text-balance text-zinc-300 sm:text-lg">
-            A lightweight osu! engine that runs in a browser! Work in progress,
-            some things inaccurate, may contain traces of bad code.
-          </p>
+        <audio
+          ref={audioRef}
+          src={audioUrl}
+          autoPlay
+          style={{ display: 'none' }}
+        />
+        <button
+          onClick={() => setShowIntro(false)}
+          className="h-full relative z-10"
+        >
+          <img
+            src={logo}
+            alt="Logo"
+            className="drop-shadow-xl h-full"
+            style={{
+              transform: `scale(${bounce})`,
+              transition:
+                bounce > 1
+                  ? 'transform 0.08s cubic-bezier(.5,2,.5,1)'
+                  : 'transform 0.2s',
+            }}
+          />
+        </button>
+
+        <div className="absolute bottom-0 grid grid-cols-3 w-full z-10 bg-black/50">
+          <div className="p-4 flex flex-col justify-center">
+            <div className="text-5xl text-white pencil-child">JustZvan</div>
+            <div>not affiliated with osu! in any way!</div>
+          </div>
+
+          <div className="flex h-full items-center justify-center">
+            {events && events.images.length > 0 && (
+              <a
+                href={events.images[eventIndex]?.url}
+                className="flex items-center justify-center"
+              >
+                <img
+                  src={events.images[eventIndex]?.image}
+                  alt="Event"
+                  className="h-30"
+                />
+              </a>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end">
+            <div className="aspect-square items-center justify-center flex">
+              <a href="https://github.com/JustZvan/osu.js">
+                <FaGithub className="text-8xl text-white mr-2 inline" />
+              </a>
+            </div>
+          </div>
+        </div>
+      </main>
+    )
+  } else {
+    content = (
+      <main className="torus-pro-normal ui-cursor overflow-hidden relative">
+        <img
+          src={selectedCard?.cardCover}
+          alt=""
+          className="absolute h-screen w-screen opacity-80 object-cover -z-10 blur-xl transition-all duration-1000"
+        />
+
+        {showLibrary && <BeatmapBrowser />}
+
+        <div
+          className={`absolute left-0 top-14 h-full bg-settings-bg-2 z-10 flex transition-transform dur</svg>ation-300 ${
+            settingsShown
+              ? 'translate-x-0 opacity-100 pointer-events-auto'
+              : '-translate-x-full opacity-0 pointer-events-none'
+          }`}
+        >
+          <div className="h-full w-56 bg-settings-bg-1 pr-16">
+            <button className="w-full p-8 flex justify-start text-xl items-center">
+              <img
+                src={cogIcon}
+                alt="Settings"
+                className="h-6 mr-2 inline"
+                style={{ filter: 'brightness(0) invert(1)' }}
+              />
+              General
+            </button>
+          </div>
+
+          <div className="h-full w-full">
+            <div className="p-6 py-8 w-full h-full min-w-96">
+              <div className="flex flex-col h-full w-full">
+                <div className="text-5xl">settings</div>
+                <div>change the way osu.js behaves</div>
+
+                <div className="h-full w-full flex items-center justify-center">
+                  <div className="text-zinc-400">nothing here yet</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
-          <Link
-            to="/game"
-            search={{} as any} // hack
-            className="inline-flex items-center justify-center rounded-lg bg-yellow-400 px-6 py-3 font-semibold text-black shadow-lg shadow-yellow-400/20 ring-1 ring-yellow-300 transition hover:translate-y-0.5 hover:bg-yellow-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-200"
-          >
-            ▶ Play the demo!
-          </Link>
+        <div className="h-screen w-screen flex flex-col z-20">
+          <div className="bg-zinc-900 w-full h-fit flex justify-between items-center pr-4 p-0.5">
+            <div>
+              <button
+                className="flex items-center p-6 py-3 hover:bg-zinc-800 rounded"
+                onClick={() => setSettingsShown(!settingsShown)}
+              >
+                <img
+                  src={cogIcon}
+                  alt="Settings"
+                  className="h-8"
+                  style={{ filter: 'brightness(0) invert(1)' }}
+                />
+              </button>
+            </div>
 
-          <Link
-            to="/browser"
-            className="inline-flex items-center justify-center rounded-lg bg-zinc-500 px-6 py-3 font-semibold text-white shadow-md hover:translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-          >
-            ▶ Beatmap browser
-          </Link>
+            <div className="flex gap-2 h-full items-center p-1">
+              <button
+                className="p-2 hover:bg-zinc-800 h-full aspect-square items-center justify-center flex text-3xl rounded-lg"
+                onClick={() => setShowLibrary(!showLibrary)}
+                title="Search beatmaps"
+              >
+                <MdOutlineLibraryMusic />
+              </button>
+
+              <div className="text-xl w-20">
+                {new Date(currentTime).toLocaleTimeString([], {
+                  hour12: false,
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="w-full h-full flex justify-between">
+            <div className="bg-zinc-800/80 w-fit h-fit p-4 clip-slant pr-96">
+              <div className="uppercase bg-green-400 text-black px-2 rounded-full text-sm w-fit">
+                You cant play ranked on osu.js lol
+              </div>
+
+              <div className="text-4xl">{selectedCard?.title}</div>
+              <div className="text-2xl">{selectedCard?.artist}</div>
+              <div className="text-xl">{selectedCard?.mapper}</div>
+
+              <div className="flex gap-2 flex-wrap"></div>
+            </div>
+
+            <div className="h-full flex flex-col justify-center gap-2 p-4">
+              {savedBeatmaps.savedBeatmaps.length === 0 ? (
+                <div className="text-zinc-400 text-center py-8">
+                  No saved beatmaps yet. Add some from the library!
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {savedBeatmaps.savedBeatmaps.map((b) => (
+                    <div key={b.id} className="flex flex-col gap-2">
+                      <button
+                        className={`relative h-20 bg-gradient-to-r from-black/90 to-black/60 rounded-lg flex overflow-hidden text-left shadow-lg hover:shadow-xl group ${
+                          selectedCard?.id === b.id
+                            ? 'w-[30vw]'
+                            : 'w-[25vw] left-[5vw]'
+                        }`}
+                        onClick={() =>
+                          setSelectedCard(selectedCard?.id === b.id ? null : b)
+                        }
+                        onContextMenu={(e) => {
+                          e.preventDefault()
+
+                          savedBeatmaps.removeBeatmap(b.id)
+                        }}
+                      >
+                        <img
+                          src={b.cardCover}
+                          alt=""
+                          className="absolute inset-0 h-full w-full object-cover opacity-30 group-hover:opacity-40 transition-opacity"
+                        />
+
+                        <div className="relative z-10 flex items-center w-full h-full">
+                          <div className="flex-1 px-4 py-2 min-w-0">
+                            <div className="text-lg font-semibold text-white truncate">
+                              {b.title}
+                            </div>
+                            <div className="text-sm text-zinc-300 truncate">
+                              by {b.artist}
+                            </div>
+                            <div className="text-xs text-zinc-400 truncate">
+                              mapped by {b.mapper}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+
+                      {selectedCard?.id === b.id &&
+                        Array.isArray(b.submaps) &&
+                        b.submaps.length > 0 && (
+                          <div className="w-[30vw] rounded-lg p-4 ml-0">
+                            <div className="flex flex-col gap-0.5">
+                              {(Array.isArray(b.submaps) ? b.submaps : [])
+                                .sort(
+                                  (a, b) =>
+                                    a.difficulty_rating - b.difficulty_rating,
+                                )
+                                .map((submap) => {
+                                  const color = getStarDifficultyColor(
+                                    submap.difficulty_rating,
+                                  )
+                                  const isSelected =
+                                    selectedSubmapId === submap.id
+                                  return (
+                                    <button
+                                      key={submap.id}
+                                      className={`flex backdrop-opacity-50 items-center rounded-xl transition-all duration-200 text-sm group border border-white/10 ${isSelected ? 'w-[28vw] ml-[2vw] scale-[1.03] shadow-lg z-10' : 'w-[24vw] ml-[6vw]'} hover:scale-[1.02] relative overflow-hidden`}
+                                      onClick={() =>
+                                        setSelectedSubmapId(
+                                          isSelected ? null : submap.id,
+                                        )
+                                      }
+                                      style={{
+                                        background: 'transparent',
+                                      }}
+                                    >
+                                      <div
+                                        className="w-2 absolute inset-0 z-20"
+                                        style={{
+                                          background: color,
+                                        }}
+                                      ></div>
+
+                                      <div
+                                        className="absolute inset-0 w-full h-full"
+                                        style={{
+                                          background: dimColor(color),
+                                        }}
+                                      ></div>
+
+                                      <div className="flex items-center relative z-10 p-2 ml-2">
+                                        <div className="flex flex-col">
+                                          <div className="flex items-center">
+                                            <div className="text-white font-medium group-hover:text-gray-200 transition-colors">
+                                              {submap.version}
+                                            </div>
+                                            <div className="text-xs text-gray-400 px-2 py-1 rounded-full">
+                                              mapped by {b.mapper}
+                                            </div>
+                                          </div>
+
+                                          <div
+                                            className={`flex items-center gap-2 px-2 rounded-full w-fit`}
+                                            style={{
+                                              background: color,
+                                            }}
+                                          >
+                                            <div className="text-sm text-black font-bold">
+                                              ★{' '}
+                                              {submap.difficulty_rating.toFixed(
+                                                2,
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </button>
+                                  )
+                                })}
+                            </div>
+                          </div>
+                        )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="absolute bottom-0 right-0 translate-x-1/8 translate-y-1/3 overflow-hidden transition-all hover:scale-120 active:scale-95">
+            <button
+              onClick={() => {
+                if (selectedCard && selectedSubmapId) {
+                  const selectedSubmap = selectedCard.submaps?.find(
+                    (submap) => submap.id === selectedSubmapId,
+                  )
+                  if (selectedSubmap) {
+                    const oszUrl = `https://osu.direct/api/d/${selectedCard.id}`
+                    navigate({
+                      to: '/game',
+                      search: {
+                        oszUrl: oszUrl,
+                        beatmapInfo: JSON.stringify({
+                          id: selectedCard.id,
+                          title: selectedCard.title,
+                          artist: selectedCard.artist,
+                          mapper: selectedCard.mapper,
+                          selectedSubmap: selectedSubmap,
+                        }),
+                        difficulties: JSON.stringify(
+                          selectedCard.submaps || [],
+                        ),
+                        selectedDifficulty: selectedSubmap.version,
+                      },
+                    })
+                  }
+                }
+              }}
+              className={`transition-all ${
+                selectedCard && selectedSubmapId
+                  ? 'cursor-pointer hover:brightness-110'
+                  : 'cursor-default opacity-50'
+              }`}
+            >
+              <img src={logo} alt="Logo" className="h-80" />
+            </button>
+          </div>
         </div>
+      </main>
+    )
+  }
 
-        <div className="text-zinc-400">song used in demo is bad apple!</div>
-      </section>
-    </main>
-  )
+  return content
 }

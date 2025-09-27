@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+@theme {
+  --color-settings-bg-1: #24222a;
+  --color-settings-bg-2: #302e38;
+}
+
 body {
   @apply m-0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
@@ -12,4 +17,40 @@ body {
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
+}
+
+.clip-slant {
+  clip-path: polygon(0 0, 100% 0, 95% 100%, 0 100%);
+}
+
+.ui-cursor * {
+  cursor: url(/arrow.png), auto;
+}
+
+.ui-cursor {
+  cursor: url(/arrow.png), auto;
+}
+
+.torus-pro-normal {
+  font-family: 'TorusPro', sans-serif;
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'TorusPro';
+  src: url('/fonts/torus pro.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Pencil Child";
+  src: url("/fonts/Pencil Child.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+
+.pencil-child {
+  font-family: "Pencil Child";
 }

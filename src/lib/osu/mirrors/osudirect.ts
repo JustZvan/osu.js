@@ -1,4 +1,4 @@
-import { BeatmapInfo, BeatmapProvider } from './provider'
+import { BeatmapInfo, BeatmapProvider, Submap } from './provider'
 
 export class OsuDirectBeatmapProvider extends BeatmapProvider {
   async searchBeatmaps(query: string) {
@@ -16,6 +16,8 @@ export class OsuDirectBeatmapProvider extends BeatmapProvider {
         creator,
         covers,
         nsfw,
+        preview_url,
+        beatmaps: submapsData,
       }: {
         id: number
         title: string
@@ -25,11 +27,26 @@ export class OsuDirectBeatmapProvider extends BeatmapProvider {
           [key: string]: string
         }
         nsfw: boolean
+        preview_url: string
+        beatmaps: any[]
       }) => {
         // get this weirdo shit out of here
         if (nsfw) return
 
-        const beatmap = new BeatmapInfo(id, title, artist, creator, covers.card)
+        const submaps = submapsData
+          ? submapsData.map((submapData) => new Submap(submapData))
+          : []
+
+        const beatmap = new BeatmapInfo(
+          id,
+          title,
+          artist,
+          creator,
+          covers.card,
+          covers['list@2x'],
+          preview_url,
+          submaps,
+        )
 
         beatmaps.push(beatmap)
       },

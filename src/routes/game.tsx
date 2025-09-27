@@ -17,12 +17,18 @@ export const Route = createFileRoute('/game')({
       oszUrl: search.oszUrl as string | undefined,
       beatmapInfo: search.beatmapInfo as string | undefined,
       difficulties: search.difficulties as string | undefined,
+      selectedDifficulty: search.selectedDifficulty as string | undefined,
     }
   },
 })
 
 function App() {
-  const { oszUrl, difficulties } = Route.useSearch()
+  const {
+    oszUrl,
+    difficulties,
+    beatmapInfo,
+    selectedDifficulty: preSelectedDifficulty,
+  } = Route.useSearch()
   const [gc, setGc] = useState<GameController>()
   const [image, setImage] = useState<HTMLImageElement | null>(null)
   const [backgroundImage, setBackgroundImage] =
@@ -66,6 +72,35 @@ function App() {
           const { beatmaps, files } = await parseOszFile(oszUrl)
           setAllBeatmaps(beatmaps)
           setOszFiles(files)
+
+          // If we have pre-selected difficulty from beatmapInfo, use it directly
+          if (preSelectedDifficulty) {
+            const selectedBeatmap = beatmaps.find(
+              (b) => b.metadata.version === preSelectedDifficulty,
+            )
+            if (selectedBeatmap) {
+              setSelectedDifficulty(preSelectedDifficulty)
+              await loadBeatmap(selectedBeatmap, files)
+              return
+            }
+          }
+
+          // If we have beatmapInfo with selectedSubmap, find the matching beatmap
+          if (beatmapInfo) {
+            const parsedBeatmapInfo = JSON.parse(beatmapInfo)
+            if (parsedBeatmapInfo.selectedSubmap) {
+              const selectedBeatmap = beatmaps.find(
+                (b) =>
+                  b.metadata.version ===
+                  parsedBeatmapInfo.selectedSubmap.version,
+              )
+              if (selectedBeatmap) {
+                setSelectedDifficulty(selectedBeatmap.metadata.version)
+                await loadBeatmap(selectedBeatmap, files)
+                return
+              }
+            }
+          }
 
           if (beatmaps.length > 1) {
             setShowDifficultySelect(true)
@@ -137,7 +172,7 @@ function App() {
     }
 
     main()
-  }, [oszUrl, difficulties])
+  }, [oszUrl, difficulties, beatmapInfo, preSelectedDifficulty])
 
   const handleDifficultySelect = async (difficultyVersion: string) => {
     const selectedBeatmap = allBeatmaps.find(
