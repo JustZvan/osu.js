@@ -3,6 +3,18 @@ import { StorageManager } from '../storage/StorageManager'
 import type { StorageKey, StorageSchema } from '../storage/StorageManager'
 import type { BeatmapInfo } from '../osu/mirrors/provider'
 
+export type Settings = {
+  videoBackgrounds: boolean
+  seasonalBackgrounds: boolean
+  opacity: number // 1-100
+}
+
+const DEFAULT_SETTINGS: Settings = {
+  videoBackgrounds: true,
+  seasonalBackgrounds: true,
+  opacity: 100,
+}
+
 /**
  * Custom hook for managing localStorage with type safety and reactivity
  */
@@ -41,6 +53,34 @@ export function useStorage<K extends StorageKey>(key: K) {
     setValue: updateValue,
     removeValue,
     hasValue: StorageManager.has(key),
+  }
+}
+
+export function useSettings() {
+  const { value, setValue } = useStorage('settings' as any)
+
+  const settings: Settings = {
+    videoBackgrounds:
+      value?.videoBackgrounds ?? DEFAULT_SETTINGS.videoBackgrounds,
+    seasonalBackgrounds:
+      value?.seasonalBackgrounds ?? DEFAULT_SETTINGS.seasonalBackgrounds,
+    opacity:
+      typeof value?.opacity === 'number'
+        ? Math.max(1, Math.min(100, value.opacity))
+        : DEFAULT_SETTINGS.opacity,
+  }
+
+  const updateSetting = <K extends keyof Settings>(
+    key: K,
+    newValue: Settings[K],
+  ) => {
+    setValue({ ...settings, [key]: newValue })
+  }
+
+  return {
+    settings,
+    setSettings: setValue,
+    updateSetting,
   }
 }
 

@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { useSettings } from '@/lib/hooks/useStorage'
 import { GameController } from '@/lib/GameController'
 import useInterval from '@/lib/hooks/useInterval'
 import {
@@ -32,6 +33,7 @@ export const Route = createFileRoute('/game')({
 })
 
 function App() {
+  const settings = useSettings()
   const {
     oszUrl,
     difficulties,
@@ -155,113 +157,72 @@ function App() {
   }
 
   async function loadBeatmap(newBeatmap: Beatmap, files: any) {
-    console.log(newBeatmap)
-
-    // Ensure only one audio is playing at once
     if (AudioController._active) {
       AudioController._active.destroy?.()
       AudioController._active = null
     }
-
     gc?.audioController?.destroy?.()
-
     const audioFilename = newBeatmap.general.audioFilename
     const audioFile = files[audioFilename]
-
-    if (!audioFile) {
-      console.error('Audio file not found:', audioFilename)
-      return
-    }
-
+    if (!audioFile) return
     const audioController = new AudioController(audioFile)
     AudioController._active = audioController
     const newGc = new GameController(newBeatmap, audioController)
     setGc(newGc)
-
     const img = new window.Image()
     img.src = '/skin/hitcircleoverlay.png'
     img.onload = () => setImage(img)
-
     if (newBeatmap?.events?.backgroundPath) {
       const backgroundFilename = newBeatmap.events.backgroundPath
       const backgroundFile = files[backgroundFilename]
-
       if (backgroundFile) {
         const blob = new Blob([backgroundFile.buffer as ArrayBuffer])
         const backgroundUrl = URL.createObjectURL(blob)
         const bgImg = new window.Image()
-
         bgImg.src = backgroundUrl
         bgImg.onload = () => setBackgroundImage(bgImg)
       }
     }
-
-    // Load video if available
-    if (newBeatmap?.events.storyboard?.layers) {
+    if (
+      settings.settings.videoBackgrounds !== false &&
+      newBeatmap?.events.storyboard?.layers
+    ) {
       const videoLayer = newBeatmap.events.storyboard.getLayerByType(
         LayerType.Video,
       )
-
       if (videoLayer) {
         const videoFilePath = videoLayer.elements[0]?.filePath
         const videoFile = files[videoFilePath]
-
         if (videoFile && videoFilePath) {
-          // Detect video format based on file extension
           const extension = videoFilePath.split('.').pop()?.toLowerCase()
-          let mimeType = 'video/mp4' // default
-
+          let mimeType = 'video/mp4'
           if (extension === 'avi') mimeType = 'video/x-msvideo'
           else if (extension === 'mp4') mimeType = 'video/mp4'
           else if (extension === 'webm') mimeType = 'video/webm'
           else if (extension === 'ogg') mimeType = 'video/ogg'
           else if (extension === 'mov') mimeType = 'video/quicktime'
           else if (extension === 'wmv') mimeType = 'video/x-ms-wmv'
-
-          console.log('Video file path:', videoFilePath, 'MIME type:', mimeType)
-
-          // Check if the browser supports this video format
           const testVideo = document.createElement('video')
           const canPlay = testVideo.canPlayType(mimeType)
-
           if (!canPlay) {
-            // transcode via ffmpeg, just copy data to mp4
-            console.log(
-              'Browser cannot play video format:',
-              mimeType,
-              '- Transcoding via ffmpeg',
-            )
-
             const inputName = `input.${extension}`
             const outputName = 'output.mp4'
-
             await ffmpeg.writeFile(
               inputName,
               new Uint8Array(videoFile.buffer as ArrayBuffer),
             )
             await ffmpeg.exec(['-i', inputName, '-c:v', 'copy', outputName])
-
             const data = await ffmpeg.readFile(outputName)
             const blob = new Blob([(data as any).buffer], { type: 'video/mp4' })
             const videoUrl = URL.createObjectURL(blob)
             setVideoUri(videoUrl)
           } else {
-            console.log(
-              'Browser can play video format:',
-              mimeType,
-              '- Support level:',
-              canPlay,
-            )
             const blob = new Blob([videoFile.buffer as ArrayBuffer], {
               type: mimeType,
             })
             const videoUrl = URL.createObjectURL(blob)
             setVideoUri(videoUrl)
           }
-
-          // Video will auto-play via the useEffect and autoPlay attribute
-        } else {
-          console.log('No video file found or invalid path')
         }
       }
     }
@@ -345,16 +306,17 @@ function App() {
 
   const render = useCallback(async () => {
     if (!canvas.current || !image || !gc) return
-
     const context = canvas.current.getContext('2d')!
-
     const circles = await gc?.getVisibleCircles()
     const sliders = await gc?.getVisibleSliders()
     const spinners = await gc?.getVisibleSpinners()
-
     context.clearRect(0, 0, canvas.current.width, canvas.current.height)
-
+    const bgOpacity =
+      typeof settings.settings.opacity === 'number'
+        ? settings.settings.opacity / 100
+        : 0.4
     if (
+      settings.settings.videoBackgrounds !== false &&
       videoRef.current &&
       videoRef.current.src &&
       !videoRef.current.paused &&
@@ -362,17 +324,13 @@ function App() {
     ) {
       try {
         context.save()
-        context.globalAlpha = 0.7
-
+        context.globalAlpha = bgOpacity
         const video = videoRef.current
         const canvasWidth = canvas.current.width
         const canvasHeight = canvas.current.height
-
         const videoAspect = video.videoWidth / video.videoHeight
         const canvasAspect = canvasWidth / canvasHeight
-
         let drawWidth, drawHeight, offsetX, offsetY
-
         if (videoAspect > canvasAspect) {
           drawHeight = canvasHeight
           drawWidth = drawHeight * videoAspect
@@ -384,26 +342,20 @@ function App() {
           offsetX = 0
           offsetY = (canvasHeight - drawHeight) / 2
         }
-
         context.drawImage(video, offsetX, offsetY, drawWidth, drawHeight)
         context.restore()
-      } catch (e) {
-        console.log(e)
-      }
+      } catch (e) {}
     } else {
       if (backgroundImage) {
         const bgScaleX = canvas.current.width / backgroundImage.width
         const bgScaleY = canvas.current.height / backgroundImage.height
         const scale = Math.max(bgScaleX, bgScaleY)
-
         const scaledWidth = backgroundImage.width * scale
         const scaledHeight = backgroundImage.height * scale
-
         const x = (canvas.current.width - scaledWidth) / 2
         const y = (canvas.current.height - scaledHeight) / 2
-
         context.save()
-        context.globalAlpha = 0.4
+        context.globalAlpha = bgOpacity
         context.drawImage(backgroundImage, x, y, scaledWidth, scaledHeight)
         context.restore()
       }
