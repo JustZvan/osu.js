@@ -285,10 +285,6 @@ function App() {
       img.src = '/skin/hitcircleoverlay.png'
       img.onload = () => setImage(img)
 
-      console.log(
-        selectedBeatmap.events?.storyboard?.getLayerByType(LayerType.Video),
-      )
-
       if (selectedBeatmap?.events?.backgroundPath) {
         const backgroundFilename = selectedBeatmap.events.backgroundPath
         const backgroundFile = oszFiles[backgroundFilename]
@@ -363,6 +359,30 @@ function App() {
     const currentTime = await gc.audioController.getTime()
     const currentTimeMs = currentTime * 1000
     const sliderMultiplier = gc.beatmap.difficulty.sliderMultiplier ?? 1.4
+
+    const beatmapEvents = gc.beatmap.events
+
+    beatmapEvents.breaks.forEach((breakPeriod) => {
+      const startTime = breakPeriod.startTime
+      const endTime = breakPeriod.endTime
+
+      if (currentTimeMs >= startTime && currentTimeMs <= endTime) {
+        const secondsLeft = Math.ceil((endTime - currentTimeMs) / 1000)
+        context.save()
+        context.globalAlpha = 1
+        context.font = `bold ${canvas.current!.height * 0.12}px Arial`
+        context.textAlign = 'center'
+        context.textBaseline = 'middle'
+        context.fillStyle = '#fff'
+        context.strokeStyle = '#000'
+        context.lineWidth = 8
+        const centerX = canvas.current!.width / 2
+        const centerY = canvas.current!.height / 2
+        context.strokeText(secondsLeft.toString(), centerX, centerY)
+        context.fillText(secondsLeft.toString(), centerX, centerY)
+        context.restore()
+      }
+    })
 
     sliders?.forEach((slider, index) => {
       const {
