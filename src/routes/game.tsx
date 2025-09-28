@@ -14,6 +14,11 @@ import { AudioController } from '@/lib/AudioController'
 import { getHitTime, getStartPosition } from '@/lib/osu/adapter'
 import { LayerType, type Beatmap, type HitObject } from 'osu-classes'
 
+import { FFmpeg } from '@ffmpeg/ffmpeg'
+
+import coreURL from '@ffmpeg/core?url'
+import wasmURL from '@ffmpeg/core/wasm?url'
+
 export const Route = createFileRoute('/game')({
   component: App,
   validateSearch: (search: Record<string, unknown>) => {
@@ -116,6 +121,152 @@ function App() {
     position: getStartPosition(circle),
   })
 
+  const ffmpegRef = useRef<FFmpeg | null>(null)
+  if (!ffmpegRef.current) {
+    ffmpegRef.current = new FFmpeg()
+  }
+  const ffmpeg = ffmpegRef.current
+
+  useEffect(() => {
+    if (!ffmpeg.loaded) {
+      ffmpeg
+        .load({
+          coreURL,
+          wasmURL,
+        })
+        .then(() => {
+          console.log('loaded')
+        })
+    }
+  }, [ffmpeg])
+
+  async function loadDemoBeatmap() {
+    const { beatmaps, files } = await parseOszFile('/badapple.osz')
+
+    const hardBeatmap =
+      beatmaps.find((b) => b.metadata.version === 'Hard') || beatmaps[0]
+
+    if (!hardBeatmap) {
+      console.error('No beatmap found')
+      return
+    }
+
+    await loadBeatmap(hardBeatmap, files)
+  }
+
+  async function loadBeatmap(newBeatmap: Beatmap, files: any) {
+    console.log(newBeatmap)
+
+    // Ensure only one audio is playing at once
+    if (AudioController._active) {
+      AudioController._active.destroy?.()
+      AudioController._active = null
+    }
+
+    gc?.audioController?.destroy?.()
+
+    const audioFilename = newBeatmap.general.audioFilename
+    const audioFile = files[audioFilename]
+
+    if (!audioFile) {
+      console.error('Audio file not found:', audioFilename)
+      return
+    }
+
+    const audioController = new AudioController(audioFile)
+    AudioController._active = audioController
+    const newGc = new GameController(newBeatmap, audioController)
+    setGc(newGc)
+
+    const img = new window.Image()
+    img.src = '/skin/hitcircleoverlay.png'
+    img.onload = () => setImage(img)
+
+    if (newBeatmap?.events?.backgroundPath) {
+      const backgroundFilename = newBeatmap.events.backgroundPath
+      const backgroundFile = files[backgroundFilename]
+
+      if (backgroundFile) {
+        const blob = new Blob([backgroundFile.buffer as ArrayBuffer])
+        const backgroundUrl = URL.createObjectURL(blob)
+        const bgImg = new window.Image()
+
+        bgImg.src = backgroundUrl
+        bgImg.onload = () => setBackgroundImage(bgImg)
+      }
+    }
+
+    // Load video if available
+    if (newBeatmap?.events.storyboard?.layers) {
+      const videoLayer = newBeatmap.events.storyboard.getLayerByType(
+        LayerType.Video,
+      )
+
+      if (videoLayer) {
+        const videoFilePath = videoLayer.elements[0]?.filePath
+        const videoFile = files[videoFilePath]
+
+        if (videoFile && videoFilePath) {
+          // Detect video format based on file extension
+          const extension = videoFilePath.split('.').pop()?.toLowerCase()
+          let mimeType = 'video/mp4' // default
+
+          if (extension === 'avi') mimeType = 'video/x-msvideo'
+          else if (extension === 'mp4') mimeType = 'video/mp4'
+          else if (extension === 'webm') mimeType = 'video/webm'
+          else if (extension === 'ogg') mimeType = 'video/ogg'
+          else if (extension === 'mov') mimeType = 'video/quicktime'
+          else if (extension === 'wmv') mimeType = 'video/x-ms-wmv'
+
+          console.log('Video file path:', videoFilePath, 'MIME type:', mimeType)
+
+          // Check if the browser supports this video format
+          const testVideo = document.createElement('video')
+          const canPlay = testVideo.canPlayType(mimeType)
+
+          if (!canPlay) {
+            // transcode via ffmpeg, just copy data to mp4
+            console.log(
+              'Browser cannot play video format:',
+              mimeType,
+              '- Transcoding via ffmpeg',
+            )
+
+            const inputName = `input.${extension}`
+            const outputName = 'output.mp4'
+
+            await ffmpeg.writeFile(
+              inputName,
+              new Uint8Array(videoFile.buffer as ArrayBuffer),
+            )
+            await ffmpeg.exec(['-i', inputName, '-c:v', 'copy', outputName])
+
+            const data = await ffmpeg.readFile(outputName)
+            const blob = new Blob([(data as any).buffer], { type: 'video/mp4' })
+            const videoUrl = URL.createObjectURL(blob)
+            setVideoUri(videoUrl)
+          } else {
+            console.log(
+              'Browser can play video format:',
+              mimeType,
+              '- Support level:',
+              canPlay,
+            )
+            const blob = new Blob([videoFile.buffer as ArrayBuffer], {
+              type: mimeType,
+            })
+            const videoUrl = URL.createObjectURL(blob)
+            setVideoUri(videoUrl)
+          }
+
+          // Video will auto-play via the useEffect and autoPlay attribute
+        } else {
+          console.log('No video file found or invalid path')
+        }
+      }
+    }
+  }
+
   useEffect(() => {
     async function main() {
       if (showDifficultySelect) {
@@ -173,122 +324,15 @@ function App() {
         await loadDemoBeatmap()
       }
     }
-
-    async function loadDemoBeatmap() {
-      const { beatmaps, files } = await parseOszFile('/badapple.osz')
-
-      const hardBeatmap =
-        beatmaps.find((b) => b.metadata.version === 'Hard') || beatmaps[0]
-
-      if (!hardBeatmap) {
-        console.error('No beatmap found')
-        return
-      }
-
-      await loadBeatmap(hardBeatmap, files)
-    }
-
-    async function loadBeatmap(newBeatmap: Beatmap, files: any) {
-      console.log(newBeatmap)
-
-      // Ensure only one audio is playing at once
-      if (AudioController._active) {
-        AudioController._active.destroy?.()
-        AudioController._active = null
-      }
-
-      gc?.audioController?.destroy?.()
-
-      const audioFilename = newBeatmap.general.audioFilename
-      const audioFile = files[audioFilename]
-
-      if (!audioFile) {
-        console.error('Audio file not found:', audioFilename)
-        return
-      }
-
-      const audioController = new AudioController(audioFile)
-      AudioController._active = audioController
-      const newGc = new GameController(newBeatmap, audioController)
-      setGc(newGc)
-
-      const img = new window.Image()
-      img.src = '/skin/hitcircleoverlay.png'
-      img.onload = () => setImage(img)
-
-      if (newBeatmap?.events?.backgroundPath) {
-        const backgroundFilename = newBeatmap.events.backgroundPath
-        const backgroundFile = files[backgroundFilename]
-
-        if (backgroundFile) {
-          const blob = new Blob([backgroundFile.buffer as ArrayBuffer])
-          const backgroundUrl = URL.createObjectURL(blob)
-          const bgImg = new window.Image()
-
-          bgImg.src = backgroundUrl
-          bgImg.onload = () => setBackgroundImage(bgImg)
-        }
-      }
-
-      // Load video if available
-      if (newBeatmap?.events.storyboard?.layers) {
-        const videoLayer = newBeatmap.events.storyboard.getLayerByType(
-          LayerType.Video,
-        )
-
-        if (videoLayer) {
-          const videoFilePath = videoLayer.elements[0]?.filePath
-          const videoFile = files[videoFilePath]
-
-          if (videoFile && videoFilePath) {
-            // Detect video format based on file extension
-            const extension = videoFilePath.split('.').pop()?.toLowerCase()
-            let mimeType = 'video/mp4' // default
-
-            if (extension === 'avi') mimeType = 'video/x-msvideo'
-            else if (extension === 'mp4') mimeType = 'video/mp4'
-            else if (extension === 'webm') mimeType = 'video/webm'
-            else if (extension === 'ogg') mimeType = 'video/ogg'
-            else if (extension === 'mov') mimeType = 'video/quicktime'
-            else if (extension === 'wmv') mimeType = 'video/x-ms-wmv'
-
-            console.log(
-              'Video file path:',
-              videoFilePath,
-              'MIME type:',
-              mimeType,
-            )
-
-            // Check if the browser supports this video format
-            const testVideo = document.createElement('video')
-            const canPlay = testVideo.canPlayType(mimeType)
-
-            if (!canPlay) {
-              console.log('sadge')
-            } else {
-              console.log(
-                'Browser can play video format:',
-                mimeType,
-                '- Support level:',
-                canPlay,
-              )
-              const blob = new Blob([videoFile.buffer as ArrayBuffer], {
-                type: mimeType,
-              })
-              const videoUrl = URL.createObjectURL(blob)
-              setVideoUri(videoUrl)
-            }
-
-            // Video will auto-play via the useEffect and autoPlay attribute
-          } else {
-            console.log('No video file found or invalid path')
-          }
-        }
-      }
-    }
-
     main()
-  }, [oszUrl, difficulties, beatmapInfo, preSelectedDifficulty])
+  }, [
+    oszUrl,
+    difficulties,
+    beatmapInfo,
+    preSelectedDifficulty,
+    showDifficultySelect,
+    selectedDifficulty,
+  ])
 
   const approachCircleImg = useRef<HTMLImageElement | null>(null)
   useEffect(() => {
@@ -814,15 +858,6 @@ function App() {
     const currentTime = await gc.audioController.getTime()
     const currentTimeMs = currentTime * 1000
     const sliderMultiplier = gc.beatmap.difficulty.sliderMultiplier ?? 1.4
-
-    // Sync video with audio
-    if (videoRef.current && videoUri && !videoRef.current.paused) {
-      const videoDiff = Math.abs(videoRef.current.currentTime - currentTime)
-      if (videoDiff > 0.1) {
-        // Only sync if difference is significant
-        videoRef.current.currentTime = currentTime
-      }
-    }
 
     // Handle spinner spinning logic
     spinners?.forEach((spinner) => {

@@ -39,6 +39,13 @@ export default defineConfig({
     global: 'globalThis',
   },
   optimizeDeps: {
-    include: ['@kionell/osu-pp-calculator'],
+    exclude: ['@ffmpeg/core', '@ffmpeg/util', '@ffmpeg/ffmpeg'],
   },
+  worker: {
+    format: 'es',
+  },
+  server: {
+    headers: {
+    }
+  }
 })
