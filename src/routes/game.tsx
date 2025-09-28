@@ -34,6 +34,7 @@ function App() {
     selectedDifficulty: preSelectedDifficulty,
   } = Route.useSearch()
   const [gc, setGc] = useState<GameController>()
+  const [videoUri, setVideoUri] = useState<string>('')
   const [image, setImage] = useState<HTMLImageElement | null>(null)
   const [backgroundImage, setBackgroundImage] =
     useState<HTMLImageElement | null>(null)
@@ -44,19 +45,10 @@ function App() {
   const [combo, setCombo] = useState(0)
 
   const [showDifficultySelect, setShowDifficultySelect] = useState(false)
-  const [availableDifficulties, setAvailableDifficulties] = useState<
-    Array<{
-      version: string
-      artist: string
-      title: string
-      creator: string
-    }>
-  >([])
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(
     null,
   )
-  const [allBeatmaps, setAllBeatmaps] = useState<Beatmap[]>([])
-  const [oszFiles, setOszFiles] = useState<any>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
 
   const getSliderRuntime = (slider: HitObject) => {
     const sliderAny = slider as any
@@ -136,12 +128,7 @@ function App() {
 
       if (oszUrl && difficulties) {
         try {
-          const parsedDifficulties = JSON.parse(difficulties)
-          setAvailableDifficulties(parsedDifficulties)
-
           const { beatmaps, files } = await parseOszFile(oszUrl)
-          setAllBeatmaps(beatmaps)
-          setOszFiles(files)
 
           if (preSelectedDifficulty) {
             const selectedBeatmap = beatmaps.find(
@@ -229,7 +216,6 @@ function App() {
       img.src = '/skin/hitcircleoverlay.png'
       img.onload = () => setImage(img)
 
-      // Load background image if available
       if (newBeatmap?.events?.backgroundPath) {
         const backgroundFilename = newBeatmap.events.backgroundPath
         const backgroundFile = files[backgroundFilename]
@@ -243,63 +229,66 @@ function App() {
           bgImg.onload = () => setBackgroundImage(bgImg)
         }
       }
+
+      // Load video if available
+      if (newBeatmap?.events.storyboard?.layers) {
+        const videoLayer = newBeatmap.events.storyboard.getLayerByType(
+          LayerType.Video,
+        )
+
+        if (videoLayer) {
+          const videoFilePath = videoLayer.elements[0]?.filePath
+          const videoFile = files[videoFilePath]
+
+          if (videoFile && videoFilePath) {
+            // Detect video format based on file extension
+            const extension = videoFilePath.split('.').pop()?.toLowerCase()
+            let mimeType = 'video/mp4' // default
+
+            if (extension === 'avi') mimeType = 'video/x-msvideo'
+            else if (extension === 'mp4') mimeType = 'video/mp4'
+            else if (extension === 'webm') mimeType = 'video/webm'
+            else if (extension === 'ogg') mimeType = 'video/ogg'
+            else if (extension === 'mov') mimeType = 'video/quicktime'
+            else if (extension === 'wmv') mimeType = 'video/x-ms-wmv'
+
+            console.log(
+              'Video file path:',
+              videoFilePath,
+              'MIME type:',
+              mimeType,
+            )
+
+            // Check if the browser supports this video format
+            const testVideo = document.createElement('video')
+            const canPlay = testVideo.canPlayType(mimeType)
+
+            if (!canPlay) {
+              console.log('sadge')
+            } else {
+              console.log(
+                'Browser can play video format:',
+                mimeType,
+                '- Support level:',
+                canPlay,
+              )
+              const blob = new Blob([videoFile.buffer as ArrayBuffer], {
+                type: mimeType,
+              })
+              const videoUrl = URL.createObjectURL(blob)
+              setVideoUri(videoUrl)
+            }
+
+            // Video will auto-play via the useEffect and autoPlay attribute
+          } else {
+            console.log('No video file found or invalid path')
+          }
+        }
+      }
     }
 
     main()
   }, [oszUrl, difficulties, beatmapInfo, preSelectedDifficulty])
-
-  const handleDifficultySelect = async (difficultyVersion: string) => {
-    const selectedBeatmap = allBeatmaps.find(
-      (b) => b.metadata.version === difficultyVersion,
-    )
-    if (selectedBeatmap && oszFiles) {
-      setSelectedDifficulty(difficultyVersion)
-      setShowDifficultySelect(false)
-
-      // Ensure only one audio is playing at once
-      if (AudioController._active) {
-        AudioController._active.destroy?.()
-        AudioController._active = null
-      }
-      gc?.audioController?.destroy?.()
-
-      setGc(undefined)
-      setImage(null)
-      setBackgroundImage(null)
-      setScore(0)
-
-      const audioFilename = selectedBeatmap.general.audioFilename
-      const audioFile = oszFiles[audioFilename]
-
-      if (!audioFile) {
-        console.error('Audio file not found:', audioFilename)
-        return
-      }
-
-      const audioController = new AudioController(audioFile)
-      AudioController._active = audioController
-      const newGc = new GameController(selectedBeatmap, audioController)
-      setGc(newGc)
-
-      const img = new window.Image()
-      img.src = '/skin/hitcircleoverlay.png'
-      img.onload = () => setImage(img)
-
-      if (selectedBeatmap?.events?.backgroundPath) {
-        const backgroundFilename = selectedBeatmap.events.backgroundPath
-        const backgroundFile = oszFiles[backgroundFilename]
-
-        if (backgroundFile) {
-          const blob = new Blob([backgroundFile.buffer as ArrayBuffer])
-          const backgroundUrl = URL.createObjectURL(blob)
-          const bgImg = new window.Image()
-
-          bgImg.src = backgroundUrl
-          bgImg.onload = () => setBackgroundImage(bgImg)
-        }
-      }
-    }
-  }
 
   const approachCircleImg = useRef<HTMLImageElement | null>(null)
   useEffect(() => {
@@ -321,21 +310,59 @@ function App() {
 
     context.clearRect(0, 0, canvas.current.width, canvas.current.height)
 
-    if (backgroundImage) {
-      const bgScaleX = canvas.current.width / backgroundImage.width
-      const bgScaleY = canvas.current.height / backgroundImage.height
-      const scale = Math.max(bgScaleX, bgScaleY)
+    if (
+      videoRef.current &&
+      videoRef.current.src &&
+      !videoRef.current.paused &&
+      !videoRef.current.ended
+    ) {
+      try {
+        context.save()
+        context.globalAlpha = 0.7
 
-      const scaledWidth = backgroundImage.width * scale
-      const scaledHeight = backgroundImage.height * scale
+        const video = videoRef.current
+        const canvasWidth = canvas.current.width
+        const canvasHeight = canvas.current.height
 
-      const x = (canvas.current.width - scaledWidth) / 2
-      const y = (canvas.current.height - scaledHeight) / 2
+        const videoAspect = video.videoWidth / video.videoHeight
+        const canvasAspect = canvasWidth / canvasHeight
 
-      context.save()
-      context.globalAlpha = 0.4
-      context.drawImage(backgroundImage, x, y, scaledWidth, scaledHeight)
-      context.restore()
+        let drawWidth, drawHeight, offsetX, offsetY
+
+        if (videoAspect > canvasAspect) {
+          drawHeight = canvasHeight
+          drawWidth = drawHeight * videoAspect
+          offsetX = (canvasWidth - drawWidth) / 2
+          offsetY = 0
+        } else {
+          drawWidth = canvasWidth
+          drawHeight = drawWidth / videoAspect
+          offsetX = 0
+          offsetY = (canvasHeight - drawHeight) / 2
+        }
+
+        context.drawImage(video, offsetX, offsetY, drawWidth, drawHeight)
+        context.restore()
+      } catch (e) {
+        console.log(e)
+      }
+    } else {
+      if (backgroundImage) {
+        const bgScaleX = canvas.current.width / backgroundImage.width
+        const bgScaleY = canvas.current.height / backgroundImage.height
+        const scale = Math.max(bgScaleX, bgScaleY)
+
+        const scaledWidth = backgroundImage.width * scale
+        const scaledHeight = backgroundImage.height * scale
+
+        const x = (canvas.current.width - scaledWidth) / 2
+        const y = (canvas.current.height - scaledHeight) / 2
+
+        context.save()
+        context.globalAlpha = 0.4
+        context.drawImage(backgroundImage, x, y, scaledWidth, scaledHeight)
+        context.restore()
+      }
     }
 
     const zoomFactor = 0.8
@@ -788,6 +815,15 @@ function App() {
     const currentTimeMs = currentTime * 1000
     const sliderMultiplier = gc.beatmap.difficulty.sliderMultiplier ?? 1.4
 
+    // Sync video with audio
+    if (videoRef.current && videoUri && !videoRef.current.paused) {
+      const videoDiff = Math.abs(videoRef.current.currentTime - currentTime)
+      if (videoDiff > 0.1) {
+        // Only sync if difference is significant
+        videoRef.current.currentTime = currentTime
+      }
+    }
+
     // Handle spinner spinning logic
     spinners?.forEach((spinner) => {
       const {
@@ -1085,6 +1121,66 @@ function App() {
     })
   }, 0)
 
+  // Handle video URI changes
+  useEffect(() => {
+    if (videoUri && videoRef.current) {
+      console.log('Video URI changed:', videoUri)
+      const video = videoRef.current
+
+      const handleCanPlay = () => {
+        console.log('Video can play - attempting to start')
+        console.log('Video details:', {
+          duration: video.duration,
+          videoWidth: video.videoWidth,
+          videoHeight: video.videoHeight,
+          readyState: video.readyState,
+        })
+
+        video
+          .play()
+          .then(() => console.log('Video playing successfully'))
+          .catch((error) => {
+            console.error('Failed to play video:', error)
+            // Clear video URI on persistent failure
+            setVideoUri('')
+          })
+      }
+
+      const handleLoadStart = () => console.log('Video load started')
+      const handleLoadedMetadata = () => console.log('Video metadata loaded')
+      const handleError = (e: Event) => {
+        console.error('Video loading error:', e)
+        const target = e.target as HTMLVideoElement
+        if (target?.error) {
+          console.error(
+            'Video error code:',
+            target.error.code,
+            'message:',
+            target.error.message,
+          )
+        }
+        setVideoUri('')
+      }
+
+      video.addEventListener('canplay', handleCanPlay)
+      video.addEventListener('loadstart', handleLoadStart)
+      video.addEventListener('loadedmetadata', handleLoadedMetadata)
+      video.addEventListener('error', handleError)
+
+      // If video is already ready, try to play immediately
+      if (video.readyState >= 3) {
+        handleCanPlay()
+      }
+
+      return () => {
+        video.removeEventListener('canplay', handleCanPlay)
+        video.removeEventListener('loadstart', handleLoadStart)
+        video.removeEventListener('loadedmetadata', handleLoadedMetadata)
+        video.removeEventListener('error', handleError)
+      }
+    }
+  }, [videoUri])
+
   useEffect(() => {
     let animationId: number
 
@@ -1102,39 +1198,49 @@ function App() {
     }
   }, [render])
 
-  if (showDifficultySelect) {
-    return (
-      <div className="h-screen w-screen bg-black flex items-center justify-center">
-        <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-8 max-w-lg w-full mx-4">
-          <h2 className="text-white text-2xl font-semibold mb-6 text-center">
-            Select Difficulty
-          </h2>
-          <div className="space-y-3">
-            {availableDifficulties.map((diff) => (
-              <button
-                key={diff.version}
-                onClick={() => handleDifficultySelect(diff.version)}
-                className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 hover:border-yellow-400/60 rounded-xl p-4 text-left transition group"
-              >
-                <div className="text-yellow-400 font-semibold text-lg group-hover:text-yellow-300">
-                  {diff.version}
-                </div>
-                <div className="text-zinc-400 text-sm mt-1">
-                  {diff.artist} - {diff.title}
-                </div>
-                <div className="text-zinc-500 text-xs mt-1">
-                  by {diff.creator}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="h-screen w-screen bg-black cursor-none overflow-hidden absolute">
+      {videoUri && (
+        <video
+          ref={videoRef}
+          src={videoUri}
+          loop
+          muted
+          autoPlay
+          playsInline
+          hidden
+          onLoadedData={() => {
+            console.log('Video loaded data')
+            if (videoRef.current) {
+              console.log('Video duration:', videoRef.current.duration)
+              console.log('Video ready state:', videoRef.current.readyState)
+            }
+          }}
+          onCanPlay={() => {
+            console.log('Video can play')
+            if (videoRef.current && videoRef.current.paused) {
+              videoRef.current
+                .play()
+                .then(() => console.log('Video playing from onCanPlay'))
+                .catch(console.error)
+            }
+          }}
+          onPlay={() => console.log('Video started playing')}
+          onPause={() => console.log('Video paused')}
+          onError={(e) => {
+            console.error('Video error:', e)
+            console.error('Video error details:', {
+              error: videoRef.current?.error,
+              networkState: videoRef.current?.networkState,
+              readyState: videoRef.current?.readyState,
+              src: videoRef.current?.src,
+            })
+            // Clear video URI on error to prevent further issues
+            setVideoUri('')
+          }}
+        ></video>
+      )}
+
       <div
         className="w-48 h-48 rounded-full z-20 absolute flex items-center justify-center -translate-x-1/2 -translate-y-1/2"
         style={{
