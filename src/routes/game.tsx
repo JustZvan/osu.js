@@ -12,7 +12,7 @@ import { preemptTime } from '@/lib/GameController'
 import { InputHandler } from '@/lib/InputHandler'
 import { AudioController } from '@/lib/AudioController'
 import { getHitTime, getStartPosition } from '@/lib/osu/adapter'
-import type { Beatmap, HitObject } from 'osu-classes'
+import { LayerType, type Beatmap, type HitObject } from 'osu-classes'
 
 export const Route = createFileRoute('/game')({
   component: App,
@@ -285,6 +285,10 @@ function App() {
       img.src = '/skin/hitcircleoverlay.png'
       img.onload = () => setImage(img)
 
+      console.log(
+        selectedBeatmap.events?.storyboard?.getLayerByType(LayerType.Video),
+      )
+
       if (selectedBeatmap?.events?.backgroundPath) {
         const backgroundFilename = selectedBeatmap.events.backgroundPath
         const backgroundFile = oszFiles[backgroundFilename]
@@ -338,7 +342,7 @@ function App() {
       context.restore()
     }
 
-    const zoomFactor = 0.9
+    const zoomFactor = 0.8
 
     const gameplayWidth = canvas.current.width * zoomFactor
     const gameplayHeight = canvas.current.height * zoomFactor
