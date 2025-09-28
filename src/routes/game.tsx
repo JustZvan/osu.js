@@ -209,6 +209,7 @@ function App() {
         AudioController._active.destroy?.()
         AudioController._active = null
       }
+
       gc?.audioController?.destroy?.()
 
       const audioFilename = newBeatmap.general.audioFilename
@@ -228,18 +229,15 @@ function App() {
       img.src = '/skin/hitcircleoverlay.png'
       img.onload = () => setImage(img)
 
-      const backgroundEvent = (gc?.beatmap as any)?.findBackgroundEvent?.()
-
-      if (backgroundEvent) {
-        const parts = backgroundEvent.split(',')
-        const backgroundFilename = parts[2].replace(/"/g, '')
+      // Load background image if available
+      if (newBeatmap?.events?.backgroundPath) {
+        const backgroundFilename = newBeatmap.events.backgroundPath
         const backgroundFile = files[backgroundFilename]
 
         if (backgroundFile) {
           const blob = new Blob([backgroundFile.buffer as ArrayBuffer])
           const backgroundUrl = URL.createObjectURL(blob)
           const bgImg = new window.Image()
-          bgImg.style.opacity = '0.25'
 
           bgImg.src = backgroundUrl
           bgImg.onload = () => setBackgroundImage(bgImg)
@@ -287,18 +285,14 @@ function App() {
       img.src = '/skin/hitcircleoverlay.png'
       img.onload = () => setImage(img)
 
-      const backgroundEvent = (gc?.beatmap as any)?.findBackgroundEvent?.()
-
-      if (backgroundEvent) {
-        const parts = backgroundEvent.split(',')
-        const backgroundFilename = parts[2].replace(/"/g, '')
+      if (selectedBeatmap?.events?.backgroundPath) {
+        const backgroundFilename = selectedBeatmap.events.backgroundPath
         const backgroundFile = oszFiles[backgroundFilename]
 
         if (backgroundFile) {
           const blob = new Blob([backgroundFile.buffer as ArrayBuffer])
           const backgroundUrl = URL.createObjectURL(blob)
           const bgImg = new window.Image()
-          bgImg.style.opacity = '0.25'
 
           bgImg.src = backgroundUrl
           bgImg.onload = () => setBackgroundImage(bgImg)
@@ -338,12 +332,10 @@ function App() {
       const x = (canvas.current.width - scaledWidth) / 2
       const y = (canvas.current.height - scaledHeight) / 2
 
-      context.fillStyle = '#000'
+      context.save()
       context.globalAlpha = 0.4
-      context.fill()
-      context.restore()
-
       context.drawImage(backgroundImage, x, y, scaledWidth, scaledHeight)
+      context.restore()
     }
 
     const zoomFactor = 0.9
