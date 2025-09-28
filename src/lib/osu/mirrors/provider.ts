@@ -68,6 +68,10 @@ export class BeatmapProvider {
   async downloadOsz(_: any): Promise<ArrayBuffer> {
     throw new Error('downloadOsz must be implemented!')
   }
+
+  async getBeatmapById(_: any): Promise<BeatmapInfo | null> {
+    throw new Error('getBeatmapById must be implemented!')
+  }
 }
 
 export class BeatmapInfo {

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { StorageManager } from '../storage/StorageManager'
 import type { StorageKey, StorageSchema } from '../storage/StorageManager'
-import type { BeatmapInfo } from '../osu/mirrors/provider'
+import { BeatmapInfo } from '../osu/mirrors/provider'
+import { OsuDirectBeatmapProvider } from '../osu/mirrors/osudirect'
 
 export type Settings = {
   videoBackgrounds: boolean
@@ -15,13 +16,39 @@ const DEFAULT_SETTINGS: Settings = {
   opacity: 100,
 }
 
-/**
- * Custom hook for managing localStorage with type safety and reactivity
- */
+const osuDirectProvider = new OsuDirectBeatmapProvider()
+
+let PRELOADED_BEATMAPS: BeatmapInfo[] = []
+
+async function initializePreloadedBeatmaps() {
+  const savedBeatmaps = StorageManager.get('savedBeatmaps')
+
+  if (savedBeatmaps.length === 0) {
+    const ids = [891334, 292301, 13177, 241526, 1839623, 2297706]
+    const beatmaps: BeatmapInfo[] = []
+    for (const id of ids) {
+      try {
+        const beatmap = await osuDirectProvider.getBeatmapById(id)
+        if (beatmap) {
+          beatmaps.push(beatmap)
+          StorageManager.beatmaps.add(beatmap)
+        }
+      } catch (e) {}
+    }
+    PRELOADED_BEATMAPS = beatmaps
+  }
+}
+
 export function useStorage<K extends StorageKey>(key: K) {
   const [value, setValue] = useState<StorageSchema[K]>(() =>
     StorageManager.get(key),
   )
+
+  useEffect(() => {
+    if (key === 'savedBeatmaps') {
+      initializePreloadedBeatmaps()
+    }
+  }, [key])
 
   const updateValue = useCallback(
     (newValue: StorageSchema[K]) => {
@@ -84,10 +111,8 @@ export function useSettings() {
   }
 }
 
-/**
- * Specialized hook for managing saved beatmaps with convenient methods
- */
 export function useSavedBeatmaps() {
+  initializePreloadedBeatmaps()
   const { value: savedBeatmaps, setValue } = useStorage('savedBeatmaps')
 
   const addBeatmap = useCallback(
