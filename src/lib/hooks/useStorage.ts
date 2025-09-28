@@ -18,8 +18,6 @@ const DEFAULT_SETTINGS: Settings = {
 
 const osuDirectProvider = new OsuDirectBeatmapProvider()
 
-let PRELOADED_BEATMAPS: BeatmapInfo[] = []
-
 async function initializePreloadedBeatmaps() {
   const savedBeatmaps = StorageManager.get('savedBeatmaps')
 
@@ -35,7 +33,6 @@ async function initializePreloadedBeatmaps() {
         }
       } catch (e) {}
     }
-    PRELOADED_BEATMAPS = beatmaps
   }
 }
 
