@@ -1042,7 +1042,7 @@ function App() {
       if (currentTimeMs > endTime || sliderAny.userProgress >= totalDuration) {
         if (sliderAny.shouldRender) {
           if (sliderAny.isActive && sliderAny.hasStarted) {
-            setScore((prev) => prev + 300)
+            setScore((prev) => prev + 300 * (1 + combo))
             setCombo((prev) => prev + 1)
           } else {
             console.log('slider incomplete!')
