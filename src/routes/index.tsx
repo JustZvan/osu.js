@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import logo from '@/assets/logo.svg'
+import logo from '@/assets/logo.png'
 import { useState, useEffect, useRef, type JSX } from 'react'
 
 import { getStarDifficultyColor } from '@/lib/osu/ui/color-calc'
