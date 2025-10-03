@@ -2,6 +2,7 @@ import { BeatmapInfo } from '../osu/mirrors/provider'
 
 export interface StorageSchema {
   savedBeatmaps: BeatmapInfo[]
+  selectedSkin: string
 }
 
 export type StorageKey = keyof StorageSchema
@@ -43,6 +44,7 @@ class StorageManagerClass {
 
     const defaultValues: StorageSchema = {
       savedBeatmaps: [],
+      selectedSkin: 'default',
     }
 
     return this.deserializeValue(value, defaultValues[key]) as StorageSchema[K]

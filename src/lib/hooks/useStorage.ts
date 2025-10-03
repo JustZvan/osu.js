@@ -156,3 +156,19 @@ export function useSavedBeatmaps() {
     count: savedBeatmaps.length,
   }
 }
+
+export function useSelectedSkin() {
+  const { value: selectedSkin, setValue } = useStorage('selectedSkin')
+
+  const setSelectedSkin = useCallback(
+    (skinName: string) => {
+      setValue(skinName)
+    },
+    [setValue],
+  )
+
+  return {
+    selectedSkin,
+    setSelectedSkin,
+  }
+}

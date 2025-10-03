@@ -2,26 +2,9 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import logo from '@/assets/logo.png'
 import { useState, useEffect, useRef, type JSX } from 'react'
 
-import { getStarDifficultyColor } from '@/lib/osu/ui/color-calc'
-
 import { FaGithub } from 'react-icons/fa'
 
 import cogIcon from '@/assets/icons/cog_solid.svg'
-
-function dimColor(hexColor: string, factor: number = 0.4): string {
-  const hex = hexColor.replace('#', '')
-
-  const r = parseInt(hex.substr(0, 2), 16)
-  const g = parseInt(hex.substr(2, 2), 16)
-  const b = parseInt(hex.substr(4, 2), 16)
-
-  const dimmedR = Math.round(r * factor)
-  const dimmedG = Math.round(g * factor)
-  const dimmedB = Math.round(b * factor)
-
-  const toHex = (n: number) => n.toString(16).padStart(2, '0')
-  return `#${toHex(dimmedR)}${toHex(dimmedG)}${toHex(dimmedB)}`
-}
 
 import { MdOutlineLibraryMusic } from 'react-icons/md'
 
@@ -33,6 +16,8 @@ import useInterval from '@/lib/hooks/useInterval'
 import { BeatmapBrowser } from '@/components/BeatmapBrowser'
 import { Settings } from '@/components/Settings'
 import { RainbowBackground } from '@/components/RainbowBackground'
+import { BeatmapCard } from '@/components/BeatmapCard'
+import { SubmapCard } from '@/components/SubmapCard'
 
 export const Route = createFileRoute('/')({
   component: RouteComponent,
@@ -194,7 +179,7 @@ function RouteComponent() {
 
   if (showPreIntro) {
     content = (
-      <main className="torus-pro-normal ui-cursor overflow-hidden h-screen w-screen flex items-center justify-center bg-black">
+      <main className="game-cursor overflow-hidden h-screen w-screen flex items-center justify-center bg-black">
         <audio
           ref={audioRef}
           src={audioUrl}
@@ -236,7 +221,7 @@ function RouteComponent() {
     )
   } else if (showIntro) {
     content = (
-      <main className="torus-pro-normal ui-cursor overflow-hidden h-screen w-screen flex items-center justify-center p-48 relative">
+      <main className="game-cursor overflow-hidden h-screen w-screen flex items-center justify-center p-48 relative">
         {settings.settings.seasonalBackgrounds ? (
           <div
             className="absolute inset-0 bg-cover bg-center transition-opacity duration-1000"
@@ -316,7 +301,7 @@ function RouteComponent() {
     )
   } else {
     content = (
-      <main className="torus-pro-normal ui-cursor overflow-hidden relative">
+      <main className="game-cursor overflow-hidden relative">
         <img
           src={selectedCard?.cardCover}
           alt=""
@@ -330,7 +315,9 @@ function RouteComponent() {
           />
         )}
 
-        {settingsShown && <Settings />}
+        {settingsShown && (
+          <Settings closeSettings={() => setSettingsShown(false)} />
+        )}
 
         <div className="h-screen w-screen flex flex-col z-20">
           <div className="bg-zinc-900 w-full h-fit flex justify-between items-center pr-4 p-0.5">
@@ -387,112 +374,42 @@ function RouteComponent() {
                 <div className="flex flex-col gap-2 overflow-scroll h-1/2 overflow-x-hidden">
                   {savedBeatmaps.savedBeatmaps.map((b) => (
                     <div key={b.id} className="flex flex-col gap-2">
-                      <button
-                        className={`relative h-20 bg-gradient-to-r from-black/90 to-black/60 rounded-lg flex overflow-hidden text-left shadow-lg hover:shadow-xl group ${
-                          selectedCard?.id === b.id
-                            ? 'w-[30vw]'
-                            : 'w-[25vw] left-[5vw]'
-                        }`}
+                      <BeatmapCard
+                        beatmap={b}
                         onClick={() =>
                           setSelectedCard(selectedCard?.id === b.id ? null : b)
                         }
                         onContextMenu={(e) => {
                           e.preventDefault()
-
                           savedBeatmaps.removeBeatmap(b.id)
                         }}
-                      >
-                        <img
-                          src={b.cardCover}
-                          alt=""
-                          className="absolute inset-0 h-full w-full object-cover opacity-30 group-hover:opacity-40 transition-opacity"
-                        />
-
-                        <div className="relative z-10 flex items-center w-full h-full">
-                          <div className="flex-1 px-4 py-2 min-w-0">
-                            <div className="text-lg font-semibold text-white truncate">
-                              {b.title}
-                            </div>
-                            <div className="text-sm text-zinc-300 truncate">
-                              by {b.artist}
-                            </div>
-                            <div className="text-xs text-zinc-400 truncate">
-                              mapped by {b.mapper}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
+                      />
 
                       {selectedCard?.id === b.id &&
                         Array.isArray(b.submaps) &&
                         b.submaps.length > 0 && (
                           <div className="w-[30vw] rounded-lg p-4 ml-0">
-                            <div className="flex flex-col gap-0.5">
+                            <div className="flex flex-col gap-2">
                               {(Array.isArray(b.submaps) ? b.submaps : [])
                                 .sort(
                                   (a, b) =>
                                     a.difficulty_rating - b.difficulty_rating,
                                 )
                                 .map((submap) => {
-                                  const color = getStarDifficultyColor(
-                                    submap.difficulty_rating,
-                                  )
                                   const isSelected =
                                     selectedSubmapId === submap.id
                                   return (
-                                    <button
+                                    <SubmapCard
                                       key={submap.id}
-                                      className={`flex backdrop-opacity-50 items-center rounded-xl transition-all duration-200 text-sm group border border-white/10 ${isSelected ? 'w-[28vw] ml-[2vw] scale-[1.03] shadow-lg z-10' : 'w-[24vw] ml-[6vw]'} hover:scale-[1.02] relative overflow-hidden`}
+                                      submap={submap}
+                                      beatmap={b}
+                                      isSelected={isSelected}
                                       onClick={() =>
                                         setSelectedSubmapId(
                                           isSelected ? null : submap.id,
                                         )
                                       }
-                                      style={{
-                                        background: 'transparent',
-                                      }}
-                                    >
-                                      <div
-                                        className="w-2 absolute inset-0 z-20"
-                                        style={{
-                                          background: color,
-                                        }}
-                                      ></div>
-
-                                      <div
-                                        className="absolute inset-0 w-full h-full"
-                                        style={{
-                                          background: dimColor(color),
-                                        }}
-                                      ></div>
-
-                                      <div className="flex items-center relative z-10 p-2 ml-2">
-                                        <div className="flex flex-col">
-                                          <div className="flex items-center">
-                                            <div className="text-white font-medium group-hover:text-gray-200 transition-colors">
-                                              {submap.version}
-                                            </div>
-                                            <div className="text-xs text-gray-400 px-2 py-1 rounded-full">
-                                              mapped by {b.mapper}
-                                            </div>
-                                          </div>
-
-                                          <div
-                                            className={`flex items-center gap-2 px-2 rounded-full w-fit`}
-                                            style={{
-                                              background: color,
-                                            }}
-                                          >
-                                            <div className="text-sm text-black font-bold">
-                                              ★{' '}
-                                              {submap.difficulty_rating.toFixed(
-                                                2,
-                                              )}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </button>
+                                    />
                                   )
                                 })}
                             </div>

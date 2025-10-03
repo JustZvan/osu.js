@@ -1,10 +1,5 @@
 @import "tailwindcss";
 
-@theme {
-  --color-settings-bg-1: #24222a;
-  --color-settings-bg-2: #302e38;
-}
-
 body {
   @apply m-0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
@@ -23,25 +18,50 @@ code {
   clip-path: polygon(0 0, 100% 0, 95% 100%, 0 100%);
 }
 
-.ui-cursor * {
-  cursor: url(/arrow.png), auto;
+.game-cursor * {
+  cursor: url("/skins/default/cursor.png") 64 64, auto;
 }
 
-.ui-cursor {
-  cursor: url(/arrow.png), auto;
-}
-
-.torus-pro-normal {
-  font-family: 'TorusPro', sans-serif;
-  font-weight: normal;
-  font-style: normal;
+.game-cursor {
+  cursor: url("/skins/default/cursor.png") 64 64, auto;
 }
 
 @font-face {
-  font-family: 'TorusPro';
-  src: url('/fonts/torus pro.otf') format('opentype');
-  font-weight: normal;
+  font-family: 'Aller';
+  src: url('/fonts/Aller_Std_Rg.ttf') format('truetype');
+  font-weight: 400;
   font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Aller';
+  src: url('/fonts/Aller-Std_It.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Aller';
+  src: url('/fonts/Aller-Std_Bd.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Aller';
+  src: url('/fonts/Aller-Std_BdIt.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+.font-aller-regular { font-family: 'Aller', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-weight: 400; font-style: normal; }
+.font-aller-italic  { font-family: 'Aller', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-weight: 400; font-style: italic; }
+.font-aller-bold    { font-family: 'Aller', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-weight: 700; font-style: normal; }
+.font-aller-bold-italic { font-family: 'Aller', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-weight: 700; font-style: italic; }
+
+body {
+  font-family: 'Aller', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 @font-face {

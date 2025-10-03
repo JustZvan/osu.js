@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useSettings } from '@/lib/hooks/useStorage'
+import { useSelectedSkin, useSettings } from '@/lib/hooks/useStorage'
 import { GameController } from '@/lib/GameController'
 import useInterval from '@/lib/hooks/useInterval'
 import {
@@ -50,6 +50,7 @@ function App() {
   const [score, setScore] = useState(0)
 
   const [combo, setCombo] = useState(0)
+  const selectedSkin = useSelectedSkin()
 
   const [showDifficultySelect, setShowDifficultySelect] = useState(false)
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(
@@ -170,7 +171,7 @@ function App() {
     const newGc = new GameController(newBeatmap, audioController)
     setGc(newGc)
     const img = new window.Image()
-    img.src = '/skin/hitcircleoverlay.png'
+    img.src = `/skins/${selectedSkin.selectedSkin}/hitcircleoverlay.png`
     img.onload = () => setImage(img)
     if (newBeatmap?.events?.backgroundPath) {
       const backgroundFilename = newBeatmap.events.backgroundPath
@@ -298,7 +299,7 @@ function App() {
   const approachCircleImg = useRef<HTMLImageElement | null>(null)
   useEffect(() => {
     const img = new window.Image()
-    img.src = '/skin/approachcircle.png'
+    img.src = `/skins/${selectedSkin.selectedSkin}/approachcircle.png`
     img.onload = () => {
       approachCircleImg.current = img
     }
@@ -1237,7 +1238,7 @@ function App() {
         }}
       >
         <img
-          src="/skin/cursor@2x.png"
+          src="/skins/default/cursor@2x.png"
           alt=""
           className="h-48 w-48 object-contain"
         />
